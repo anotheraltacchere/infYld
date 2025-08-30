@@ -11506,12 +11506,12 @@ end
 
 -- Fire the remote with target information
 local function fireTargetRemote(target)
-    local remoteEvent = ReplicatedStorage:FindFirstChild("s\239\188\150\239\188\153y ZO53\239\188\152v\239\188\151wato\239\188\144u\227\129\170\227\129\148\227\130\138\227\130\134\227\129\141\239\189\158n\239\188\144\226\128\139wat\239\188\145dt\227\128\130")
+    local remoteEvent = ReplicatedStorage:WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO")
     
     if remoteEvent and target and target.Character then
         local targetCharacter = target.Character
         local targetHumanoidRootPart = targetCharacter:FindFirstChild("HumanoidRootPart")
-        local targetLimb = targetCharacter:FindFirstChild("Left Leg") or targetHumanoidRootPart
+        local targetLimb = targetCharacter:FindFirstChild("Head") or targetHumanoidRootPart
         
         local tn1 = LocalPlayer.Character:FindFirstChild("<TN~!1>")
         
@@ -11531,7 +11531,7 @@ local function fireTargetRemote(target)
         
         if targetLimb and tn1 then
             local args = {
-                [1] = "#%mgvu3980v5unm(*#$NU%^V$N(*^Y984ny6w4v9YUNB^(*BW$V(*^VNW$(6v8w4VW$N^V",
+                [1] = "WOAH YOU HIT SOMEONE!",
                 [2] = tn1,
                 [3] = targetLimb,
                 [4] = CFrame.new(2876.855712890625, 223.56227111816406, -3851.861572265625) * CFrame.Angles(-1.1096420848843991e-07, -0.631172776222229, -7.459367878936973e-08)
@@ -12023,299 +12023,399 @@ return ChatSpy
 local script6 = [[
 local player = game:GetService("Players").LocalPlayer
 local replicatedStorage = game:GetService("ReplicatedStorage")
+local userInputService = game:GetService("UserInputService")
 
--- GUI stays in CoreScripts to reapply after respawn
-local function createGui()
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "PersistentGUI"
-    screenGui.ResetOnSpawn = false
-    screenGui.Parent = player:WaitForChild("PlayerGui")
-
-    -- Draggable Frame
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 300, 0, 200)
-    frame.Position = UDim2.new(0.35, 0, 0.3, 0)
-    frame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    frame.BorderSizePixel = 2
-    frame.Active = true
-    frame.Draggable = true
-    frame.Parent = screenGui
-
-    -- Toggle Button
-    local toggleButton = Instance.new("TextButton")
-    toggleButton.Size = UDim2.new(0, 120, 0, 40)
-    toggleButton.Position = UDim2.new(0.15, 0, 0.2, 0)
-    toggleButton.Text = "OFF"
-    toggleButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-    toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    toggleButton.Parent = frame
-
-    -- Delay Textbox
-    local delayBox = Instance.new("TextBox")
-    delayBox.Size = UDim2.new(0, 120, 0, 40)
-    delayBox.Position = UDim2.new(0.55, 0, 0.2, 0)
-    delayBox.PlaceholderText = "Delay (sec)"
-    delayBox.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-    delayBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-    delayBox.Parent = frame
-
-    -- Status Label
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(0, 280, 0, 50)
-    label.Position = UDim2.new(0.03, 0, 0.65, 0)
-    label.Text = "Waiting..."
-    label.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    label.TextColor3 = Color3.fromRGB(255, 255, 255)
-    label.TextScaled = true
-    label.Parent = frame
-
-    -- Variables
-    local running = false
-    local delayTime = 0.1
-
-    -- Function to Run the Loop
-    local function runLoop()
-        while running do
-            local character = player.Character
-            if character then
-                -- FIRST Remote Call
-                local args = {
-    [1] = "ASdAWR3fa",
-    [2] = game:GetService("Players").LocalPlayer.Character:FindFirstChild("<TN~!1>"),
-    [3] = true
+-- Settings that persist across respawns
+local settings = {
+    running = false,
+    fixedDelay = 0.1,
+    minDelay = 0.05,
+    maxDelay = 0.2,
+    useRandomDelay = false
 }
 
-game:GetService("ReplicatedStorage"):FindFirstChild("s\239\188\150\239\188\153y ZO53\239\188\152v\239\188\151wato\239\188\144u\227\129\170\227\129\148\227\130\138\227\130\134\227\129\141\239\189\158n\239\188\144\226\128\139wat\239\188\145dt\227\128\130"):FireServer(unpack(args))
-
-wait(delayTime)
-
-local args = {
-    [1] = "ASdAWR3fa",
-    [2] = game:GetService("Players").LocalPlayer.Character:FindFirstChild("<TN~!1>"),
-    [3] = false
-}
-
-game:GetService("ReplicatedStorage"):FindFirstChild("s\239\188\150\239\188\153y ZO53\239\188\152v\239\188\151wato\239\188\144u\227\129\170\227\129\148\227\130\138\227\130\134\227\129\141\239\189\158n\239\188\144\226\128\139wat\239\188\145dt\227\128\130"):FireServer(unpack(args))
-
-
-            label.Text = "Firing..."
-        end
+-- Function to make a frame draggable
+local function makeDraggable(frame)
+    local dragging = false
+    local dragInput, dragStart, startPos
+    
+    local function updateInput(input)
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
-    label.Text = "Stopped"
+    
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    
+    userInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            updateInput(input)
+        end
+    end)
 end
 
-    -- Toggle Button Click
+-- Function to run the fixed delay loop
+local function runFixedDelayLoop()
+    spawn(function()
+        while settings.running and settings.useRandomDelay == false do
+            local character = player.Character
+            if character and character:FindFirstChild("<TN~!1>") then
+                -- Block
+                local args = {
+                    [1] = "BLOCK THE BLOCK THE BLOCK",
+                    [2] = character:FindFirstChild("<TN~!1>"),
+                    [3] = true
+                }
+                replicatedStorage:WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO"):FireServer(unpack(args))
+                
+                wait(settings.fixedDelay)
+                
+                -- Unblock
+                args[3] = false
+                replicatedStorage:WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO"):FireServer(unpack(args))
+            end
+            
+            -- Only wait if character doesn't exist
+            if not player.Character or not player.Character:FindFirstChild("<TN~!1>") then
+                wait(0.001)
+            end
+        end
+    end)
+end
+
+-- Function to run the random delay loop
+local function runRandomDelayLoop()
+    spawn(function()
+        while settings.running and settings.useRandomDelay == true do
+            local character = player.Character
+            if character and character:FindFirstChild("<TN~!1>") then
+                -- Block
+                local args = {
+                    [1] = "BLOCK THE BLOCK THE BLOCK",
+                    [2] = character:FindFirstChild("<TN~!1>"),
+                    [3] = true
+                }
+                replicatedStorage:WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO"):FireServer(unpack(args))
+                
+                -- Calculate random delay
+                local randomDelay = math.random() * (settings.maxDelay - settings.minDelay) + settings.minDelay
+                wait(randomDelay)
+                
+                -- Unblock
+                args[3] = false
+                replicatedStorage:WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO"):FireServer(unpack(args))
+            end
+            
+            -- Only wait if character doesn't exist
+            if not player.Character or not player.Character:FindFirstChild("<TN~!1>") then
+                wait(0.05)
+            end
+        end
+    end)
+end
+
+-- Function to start the appropriate loop based on settings
+local function startBlockLoop()
+    if settings.useRandomDelay then
+        runRandomDelayLoop()
+    else
+        runFixedDelayLoop()
+    end
+end
+
+-- GUI creation function
+local function createGui()
+    if player.PlayerGui:FindFirstChild("AutoBlockGUI") then
+        player.PlayerGui:FindFirstChild("AutoBlockGUI"):Destroy()
+    end
+    
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "AutoBlockGUI"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = player.PlayerGui
+    
+    -- Main frame
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 220, 0, 160)
+    frame.Position = UDim2.new(0.8, -110, 0.3, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+    frame.BackgroundTransparency = 0.4
+    frame.BorderSizePixel = 1
+    frame.BorderColor3 = Color3.fromRGB(60, 60, 60)
+    frame.Parent = screenGui
+    
+    -- Add corner radius
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = frame
+    
+    -- Make frame draggable
+    makeDraggable(frame)
+    
+    -- Title
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 25)
+    title.Position = UDim2.new(0, 0, 0, 0)
+    title.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    title.BackgroundTransparency = 0.4
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.Text = "Auto Block"
+    title.TextSize = 16
+    title.Font = Enum.Font.GothamBold
+    title.Parent = frame
+    
+    -- Add corner radius to title
+    local titleCorner = Instance.new("UICorner")
+    titleCorner.CornerRadius = UDim.new(0, 6)
+    titleCorner.Parent = title
+    
+    -- Toggle button
+    local toggleButton = Instance.new("TextButton")
+    toggleButton.Size = UDim2.new(0, 70, 0, 30)
+    toggleButton.Position = UDim2.new(0.05, 0, 0.2, 0)
+    toggleButton.Text = settings.running and "ON" or "OFF"
+    toggleButton.BackgroundColor3 = settings.running and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(150, 30, 30)
+    toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    toggleButton.BorderSizePixel = 0
+    toggleButton.TextSize = 16
+    toggleButton.Font = Enum.Font.GothamBold
+    toggleButton.Parent = frame
+    
+    -- Add corner radius to toggle button
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(0, 6)
+    toggleCorner.Parent = toggleButton
+    
+    -- Fixed delay label
+    local fixedDelayLabel = Instance.new("TextLabel")
+    fixedDelayLabel.Size = UDim2.new(0, 80, 0, 20)
+    fixedDelayLabel.Position = UDim2.new(0.05, 0, 0.4, 0)
+    fixedDelayLabel.BackgroundTransparency = 1
+    fixedDelayLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    fixedDelayLabel.Text = "Fixed Delay:"
+    fixedDelayLabel.TextSize = 14
+    fixedDelayLabel.Font = Enum.Font.Gotham
+    fixedDelayLabel.TextXAlignment = Enum.TextXAlignment.Left
+    fixedDelayLabel.Parent = frame
+    
+    -- Fixed delay input
+    local fixedDelayInput = Instance.new("TextBox")
+    fixedDelayInput.Size = UDim2.new(0, 60, 0, 25)
+    fixedDelayInput.Position = UDim2.new(0.05, 0, 0.5, 0)
+    fixedDelayInput.BackgroundColor3 = Color3.fromRGB(60, 60, 65)
+    fixedDelayInput.BackgroundTransparency = 0.3
+    fixedDelayInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    fixedDelayInput.Text = tostring(settings.fixedDelay)
+    fixedDelayInput.PlaceholderText = "Delay"
+    fixedDelayInput.TextSize = 14
+    fixedDelayInput.Font = Enum.Font.Gotham
+    fixedDelayInput.Parent = frame
+    
+    -- Add corner radius to fixed delay input
+    local fixedInputCorner = Instance.new("UICorner")
+    fixedInputCorner.CornerRadius = UDim.new(0, 6)
+    fixedInputCorner.Parent = fixedDelayInput
+    
+    -- Random toggle
+    local randomToggle = Instance.new("TextButton")
+    randomToggle.Size = UDim2.new(0, 20, 0, 20)
+    randomToggle.Position = UDim2.new(0.6, 0, 0.4, 0)
+    randomToggle.Text = ""
+    randomToggle.BackgroundColor3 = settings.useRandomDelay and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
+    randomToggle.BorderSizePixel = 0
+    randomToggle.Parent = frame
+    
+    -- Add corner radius to random toggle
+    local randomToggleCorner = Instance.new("UICorner")
+    randomToggleCorner.CornerRadius = UDim.new(0, 4)
+    randomToggleCorner.Parent = randomToggle
+    
+    -- Random label
+    local randomLabel = Instance.new("TextLabel")
+    randomLabel.Size = UDim2.new(0, 60, 0, 20)
+    randomLabel.Position = UDim2.new(0.7, 0, 0.4, 0)
+    randomLabel.BackgroundTransparency = 1
+    randomLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    randomLabel.Text = "Random"
+    randomLabel.TextSize = 14
+    randomLabel.Font = Enum.Font.Gotham
+    randomLabel.TextXAlignment = Enum.TextXAlignment.Left
+    randomLabel.Parent = frame
+    
+    -- Min delay label
+    local minDelayLabel = Instance.new("TextLabel")
+    minDelayLabel.Size = UDim2.new(0, 30, 0, 20)
+    minDelayLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+    minDelayLabel.BackgroundTransparency = 1
+    minDelayLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    minDelayLabel.Text = "Min:"
+    minDelayLabel.TextSize = 14
+    minDelayLabel.Font = Enum.Font.Gotham
+    minDelayLabel.TextXAlignment = Enum.TextXAlignment.Left
+    minDelayLabel.Parent = frame
+    
+    -- Min delay input
+    local minDelayInput = Instance.new("TextBox")
+    minDelayInput.Size = UDim2.new(0, 50, 0, 25)
+    minDelayInput.Position = UDim2.new(0.65, 0, 0.5, 0)
+    minDelayInput.BackgroundColor3 = Color3.fromRGB(60, 60, 65)
+    minDelayInput.BackgroundTransparency = 0.3
+    minDelayInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    minDelayInput.Text = tostring(settings.minDelay)
+    minDelayInput.PlaceholderText = "Min"
+    minDelayInput.TextSize = 14
+    minDelayInput.Font = Enum.Font.Gotham
+    minDelayInput.Parent = frame
+    
+    -- Add corner radius to min delay input
+    local minInputCorner = Instance.new("UICorner")
+    minInputCorner.CornerRadius = UDim.new(0, 6)
+    minInputCorner.Parent = minDelayInput
+    
+    -- Max delay label
+    local maxDelayLabel = Instance.new("TextLabel")
+    maxDelayLabel.Size = UDim2.new(0, 30, 0, 20)
+    maxDelayLabel.Position = UDim2.new(0.5, 0, 0.65, 0)
+    maxDelayLabel.BackgroundTransparency = 1
+    maxDelayLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    maxDelayLabel.Text = "Max:"
+    maxDelayLabel.TextSize = 14
+    maxDelayLabel.Font = Enum.Font.Gotham
+    maxDelayLabel.TextXAlignment = Enum.TextXAlignment.Left
+    maxDelayLabel.Parent = frame
+    
+    -- Max delay input
+    local maxDelayInput = Instance.new("TextBox")
+    maxDelayInput.Size = UDim2.new(0, 50, 0, 25)
+    maxDelayInput.Position = UDim2.new(0.65, 0, 0.65, 0)
+    maxDelayInput.BackgroundColor3 = Color3.fromRGB(60, 60, 65)
+    maxDelayInput.BackgroundTransparency = 0.3
+    maxDelayInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    maxDelayInput.Text = tostring(settings.maxDelay)
+    maxDelayInput.PlaceholderText = "Max"
+    maxDelayInput.TextSize = 14
+    maxDelayInput.Font = Enum.Font.Gotham
+    maxDelayInput.Parent = frame
+    
+    -- Add corner radius to max delay input
+    local maxInputCorner = Instance.new("UICorner")
+    maxInputCorner.CornerRadius = UDim.new(0, 6)
+    maxInputCorner.Parent = maxDelayInput
+    
+    -- Status indicator
+    local statusIndicator = Instance.new("Frame")
+    statusIndicator.Size = UDim2.new(0, 10, 0, 10)
+    statusIndicator.Position = UDim2.new(0.9, 0, 0.9, 0)
+    statusIndicator.BackgroundColor3 = settings.running and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+    statusIndicator.BorderSizePixel = 0
+    statusIndicator.Parent = frame
+    
+    -- Make status indicator round
+    local statusCorner = Instance.new("UICorner")
+    statusCorner.CornerRadius = UDim.new(1, 0)
+    statusCorner.Parent = statusIndicator
+    
+    -- Toggle button click
     toggleButton.MouseButton1Click:Connect(function()
-        running = not running
-        toggleButton.Text = running and "ON" or "OFF"
-        toggleButton.BackgroundColor3 = running and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-
-        if running then
-            runLoop()
+        settings.running = not settings.running
+        toggleButton.Text = settings.running and "ON" or "OFF"
+        toggleButton.BackgroundColor3 = settings.running and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(150, 30, 30)
+        statusIndicator.BackgroundColor3 = settings.running and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+        
+        if settings.running then
+            startBlockLoop()
         end
     end)
-
-    -- Delay Input Box
-    delayBox.FocusLost:Connect(function()
-        local inputDelay = tonumber(delayBox.Text)
+    
+    -- Random toggle click
+    randomToggle.MouseButton1Click:Connect(function()
+        settings.useRandomDelay = not settings.useRandomDelay
+        randomToggle.BackgroundColor3 = settings.useRandomDelay and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
+        
+        -- Restart the loop with the new mode if it's running
+        if settings.running then
+            startBlockLoop()
+        end
+    end)
+    
+    -- Fixed delay input
+    fixedDelayInput.FocusLost:Connect(function()
+        local inputDelay = tonumber(fixedDelayInput.Text)
         if inputDelay and inputDelay > 0 then
-            delayTime = inputDelay
+            settings.fixedDelay = inputDelay
         else
-            delayBox.Text = tostring(delayTime)  -- Reset to last valid value
+            fixedDelayInput.Text = tostring(settings.fixedDelay)
         end
     end)
+    
+    -- Min delay input
+    minDelayInput.FocusLost:Connect(function()
+        local inputDelay = tonumber(minDelayInput.Text)
+        if inputDelay and inputDelay > 0 then
+            settings.minDelay = inputDelay
+            if settings.minDelay > settings.maxDelay then
+                settings.maxDelay = settings.minDelay
+                maxDelayInput.Text = tostring(settings.maxDelay)
+            end
+        else
+            minDelayInput.Text = tostring(settings.minDelay)
+        end
+    end)
+    
+    -- Max delay input
+    maxDelayInput.FocusLost:Connect(function()
+        local inputDelay = tonumber(maxDelayInput.Text)
+        if inputDelay and inputDelay > 0 then
+            settings.maxDelay = inputDelay
+            if settings.maxDelay < settings.minDelay then
+                settings.minDelay = settings.maxDelay
+                minDelayInput.Text = tostring(settings.minDelay)
+            end
+        else
+            maxDelayInput.Text = tostring(settings.maxDelay)
+        end
+    end)
+    
+    -- Start the loop if it was running before
+    if settings.running then
+        startBlockLoop()
+    end
+    
+    return screenGui
 end
 
--- Keep GUI after Respawn
+-- Handle character respawning
 player.CharacterAdded:Connect(function()
-    if not player.PlayerGui:FindFirstChild("PersistentGUI") then
+    -- Recreate GUI to ensure it's properly attached to the new character
+    if not player.PlayerGui:FindFirstChild("AutoBlockGUI") then
         createGui()
     end
-end)
-
--- Initial GUI Creation
-createGui()
-]]
-
-local script7 = [[
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-
-local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
-
--- Variables to track state and position
-local isEnabled = false
-local connection = nil
-local guiPosition = UDim2.new(0.85, 0, 0.1, 0)
-local screenGui, toggleFrame, toggleButton, statusLabel
-
--- Function to get the target path
-local function getTargetPath()
-    local playerName = player.Name
-    local path = workspace:FindFirstChild(playerName)
     
-    if path then
-        return path:FindFirstChild("<TN~!1>")
-    end
-    
-    return nil
-end
-
--- Function to disable stun
-local function disableStun()
-    local target = getTargetPath()
-    
-    if target and target:GetAttribute("Stunned") then
-        target:SetAttribute("Stunned", false)
-    end
-    
-    -- Also check backpack
-    local backpackItem = player.Backpack:FindFirstChild("<TN~!1>")
-    if backpackItem and backpackItem:GetAttribute("Stunned") then
-        backpackItem:SetAttribute("Stunned", false)
-    end
-end
-
--- Function to update GUI state
-local function updateGuiState()
-    if not toggleButton or not statusLabel then
-        return
-    end
-    
-    if isEnabled then
-        toggleButton.Text = "ENABLED"
-        toggleButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
-        statusLabel.Text = "ON"
-    else
-        toggleButton.Text = "DISABLED"
-        toggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-        statusLabel.Text = "OFF"
-    end
-end
-
--- Toggle function
-local function toggleStunDisabler()
-    isEnabled = not isEnabled
-    
-    updateGuiState()
-    
-    if isEnabled then
-        -- Start the loop
-        if connection then
-            connection:Disconnect()
-        end
-        
-        connection = RunService.Heartbeat:Connect(function()
-            disableStun()
-        end)
-    else
-        -- Stop the loop
-        if connection then
-            connection:Disconnect()
-            connection = nil
-        end
-    end
-end
-
--- Function to create the GUI
-local function createGui()
-    -- Remove existing GUI if it exists
-    local existingGui = playerGui:FindFirstChild("StunToggleGui")
-    if existingGui then
-        existingGui:Destroy()
-    end
-    
-    -- Create new GUI
-    screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "StunToggleGui"
-    screenGui.ResetOnSpawn = false -- Important to prevent GUI from disappearing
-    screenGui.Parent = playerGui
-    
-    toggleFrame = Instance.new("Frame")
-    toggleFrame.Size = UDim2.new(0, 150, 0, 50)
-    toggleFrame.Position = guiPosition
-    toggleFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    toggleFrame.BorderSizePixel = 2
-    toggleFrame.BorderColor3 = Color3.fromRGB(80, 80, 80)
-    toggleFrame.Active = true
-    toggleFrame.Draggable = true
-    toggleFrame.Parent = screenGui
-    
-    -- Track position changes
-    toggleFrame:GetPropertyChangedSignal("Position"):Connect(function()
-        guiPosition = toggleFrame.Position
-    end)
-    
-    toggleButton = Instance.new("TextButton")
-    toggleButton.Size = UDim2.new(0.65, 0, 0.8, 0)
-    toggleButton.Position = UDim2.new(0.025, 0, 0.1, 0)
-    toggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-    toggleButton.Text = "DISABLED"
-    toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    toggleButton.TextScaled = true
-    toggleButton.Font = Enum.Font.SourceSansBold
-    toggleButton.BorderSizePixel = 0
-    toggleButton.Parent = toggleFrame
-    
-    statusLabel = Instance.new("TextLabel")
-    statusLabel.Size = UDim2.new(0.25, 0, 0.8, 0)
-    statusLabel.Position = UDim2.new(0.7, 0, 0.1, 0)
-    statusLabel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    statusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    statusLabel.Text = "OFF"
-    statusLabel.TextScaled = true
-    statusLabel.Font = Enum.Font.SourceSansBold
-    statusLabel.BorderSizePixel = 0
-    statusLabel.Parent = toggleFrame
-    
-    -- Set up button click event
-    toggleButton.MouseButton1Click:Connect(toggleStunDisabler)
-    
-    -- Update visual state
-    updateGuiState()
-    
-    -- Cleanup on script termination
-    screenGui.AncestryChanged:Connect(function(_, parent)
-        if parent == nil and connection then
-            connection:Disconnect()
-        end
-    end)
-end
-
--- Handle player respawning
-local function onRespawn()
-    -- Give a small delay to ensure character is fully loaded
-    task.wait(0.1)
-    createGui()
-    
-    -- Ensure connection state is consistent
-    if isEnabled and not connection then
-        connection = RunService.Heartbeat:Connect(function()
-            disableStun()
-        end)
-    end
-end
-
--- Create the initial GUI
-createGui()
-
--- Set up character added event for respawn
-player.CharacterAdded:Connect(onRespawn)
-
--- Create a timer to ensure we run at the specified interval
-local timeSinceLastCheck = 0
-RunService.Heartbeat:Connect(function(deltaTime)
-    if isEnabled then
-        timeSinceLastCheck = timeSinceLastCheck + deltaTime
-        
-        if timeSinceLastCheck >= 0.05 then
-            disableStun()
-            timeSinceLastCheck = 0
-        end
+    -- Restart the loop if it was running
+    if settings.running then
+        startBlockLoop()
     end
 end)
+
+-- Create initial GUI
+createGui()
 ]]
 
 local script8 = [[
@@ -12388,50 +12488,21 @@ local function isPlayerStunned(player)
     return false
 end
 
--- Animation IDs
-local animationIds = {
-    "rbxassetid://6678908798",
-    "rbxassetid://6678909967",
-    "rbxassetid://6678913068",
-    "rbxassetid://6678914641"
-}
-local currentAnimationIndex = 1
-
--- Function to play the current animation
-local function playKillAuraAnimation(character)
-    local humanoid = character:FindFirstChild("Humanoid")
-    if humanoid then
-        local animator = humanoid:FindFirstChild("Animator") or Instance.new("Animator", humanoid)
-        
-        local animation = Instance.new("Animation")
-        animation.AnimationId = animationIds[currentAnimationIndex]
-        
-        local animationTrack = animator:LoadAnimation(animation)
-        animationTrack:Play()
-
-        -- Move to the next animation in the list
-        currentAnimationIndex = currentAnimationIndex % #animationIds + 1
-    end
-end
-
--- Updated performAttack to include animation playback
+-- Function to perform attack
 local function performAttack(target)
     local localPlayer = Players.LocalPlayer
     local localChar = localPlayer.Character
     if localChar and localChar:FindFirstChild("HumanoidRootPart") and target:FindFirstChild("HumanoidRootPart") then
         local args = {
-            [1] = "#%mgvu3980v5unm(*#$NU%^V$N(*^Y984ny6w4v9YUNB^(*BW$V(*^VNW$(6v8w4VW$N^V",
+            [1] = "WOAH YOU HIT SOMEONE!",
             [2] = localChar:FindFirstChild("<TN~!1>"),
-            [3] = target:FindFirstChild("Left Arm") or target:FindFirstChild("HumanoidRootPart"),
+            [3] = target:FindFirstChild("Head") or target:FindFirstChild("HumanoidRootPart"),
             [4] = localChar.HumanoidRootPart.CFrame
         }
-        local attackRemote = ReplicatedStorage:FindFirstChild("s\239\188\150\239\188\153y ZO53\239\188\152v\239\188\151wato\239\188\144u\227\129\170\227\129\148\227\130\138\227\130\134\227\129\141\239\189\158n\239\188\144\226\128\139wat\239\188\145dt\227\128\130")
+        local attackRemote = ReplicatedStorage:WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO")
         if attackRemote then
             attackRemote:FireServer(unpack(args))
         end
-
-        -- Play the Kill Aura animation
-        playKillAuraAnimation(localChar)
     end
 end
 
@@ -12561,12 +12632,12 @@ combatTab.newButton("Toggle Kick Aura", "Enable/Disable Kick Aura", function()
                                 local distance = (character.HumanoidRootPart.Position - localChar.HumanoidRootPart.Position).Magnitude
                                 if distance <= kickAuraDistance then
                                     local args = {
-                                        [1] = "SGFenfjEKASNFJKENA",
+                                        [1] = "KICKYWICKY",
                                         [2] = localChar:FindFirstChild("<TN~!1>"),
                                         [3] = character,
                                         [4] = localChar.HumanoidRootPart.CFrame
                                     }
-                                    game:GetService("ReplicatedStorage"):FindFirstChild("s\239\188\150\239\188\153y ZO53\239\188\152v\239\188\151wato\239\188\144u\227\129\170\227\129\148\227\130\138\227\130\134\227\129\141\239\189\158n\239\188\144\226\128\139wat\239\188\145dt\227\128\130"):FireServer(unpack(args))
+                                    game:GetService("ReplicatedStorage"):WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO"):FireServer(unpack(args))
                                 end
                             end
                         end
@@ -12653,16 +12724,16 @@ tab.newButton("Auto Hit Clan Guy", "Toggle Auto Hit Clan Guy", function()
         local lastHitTime = tick() -- Track the time of the last hit
         clanHitLoop = RunService.Heartbeat:Connect(function()
             if tick() - lastHitTime >= clanHitDelay then
-                local remote = ReplicatedStorage:FindFirstChild("s\239\188\150\239\188\153y ZO53\239\188\152v\239\188\151wato\239\188\144u\227\129\170\227\129\148\227\130\138\227\130\134\227\129\141\239\189\158n\239\188\144\226\128\139wat\239\188\145dt\227\128\130")
+                local remote = ReplicatedStorage:WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO")
                 local localChar = Players.LocalPlayer.Character
                 if remote and localChar then
                     local weapon = localChar:FindFirstChild("<TN~!1>")
                     if weapon then
                         local args = {
-                            [1] = "#%mgvu3980v5unm(*#$NU%^V$N(*^Y984ny6w4v9YUNB^(*BW$V(*^VNW$(6v8w4VW$N^V",
+                            [1] = "WOAH YOU HIT SOMEONE!",
                             [2] = weapon,
-                            [3] = workspace.Clans.ClansNPC:FindFirstChild("Left Arm"),
-                            [4] = CFrame.new(2906.30859375, 224.05477905273438, -3835.256591796875) * CFrame.Angles(-3.141592502593994, -1.0840948820114136, -3.141592502593994)
+                            [3] = workspace.Clans.ClansNPC:FindFirstChild("Head"),
+                            [4] = CFrame.new(2905.097412109375, 224.10476684570312, -3835.6630859375, -0.5031031370162964, -1.0004535511143331e-07, -0.8642264008522034, -5.48595195937196e-08, 1, -8.382683347463171e-08, 0.8642264008522034, 5.237501543575718e-09, -0.5031031370162964)
                         }
                         remote:FireServer(unpack(args))
                         lastHitTime = tick() -- Update the last hit time
@@ -12687,25 +12758,25 @@ end)
 tab.newButton("Hit Bell", "Hit bell", function()
 
 local args = {
-    [1] = "#%mgvu3980v5unm(*#$NU%^V$N(*^Y984ny6w4v9YUNB^(*BW$V(*^VNW$(6v8w4VW$N^V",
+    [1] = "WOAH YOU HIT SOMEONE!",
     [2] = game:GetService("Players").LocalPlayer.Character:FindFirstChild("<TN~!1>"),
     [3] = workspace.Ignore.BellModel.BellAttach.Bell,
-    [4] = CFrame.new(3489.372314453125, 324.8769226074219, -3716.06787109375) * CFrame.Angles(-3.1415927410125732, 1.3858060836791992, 3.1415927410125732)
+    [4] = CFrame.new(3489.572265625, 325.30877685546875, -3719.884765625, 0.19734840095043182, 1.221115297767028e-07, 0.9803333878517151, -4.488273219749317e-08, 1, -1.1552599232800276e-07, -0.9803333878517151, -2.120117237325303e-08, 0.19734840095043182)
 }
 
-game:GetService("ReplicatedStorage"):FindFirstChild("s\239\188\150\239\188\153y ZO53\239\188\152v\239\188\151wato\239\188\144u\227\129\170\227\129\148\227\130\138\227\130\134\227\129\141\239\189\158n\239\188\144\226\128\139wat\239\188\145dt\227\128\130"):FireServer(unpack(args))
+game:GetService("ReplicatedStorage"):WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO"):FireServer(unpack(args))
 
 end)
 
 tab.newButton("Hit Bong", "Hit Gong", function()
 local args = {
-    [1] = "#%mgvu3980v5unm(*#$NU%^V$N(*^Y984ny6w4v9YUNB^(*BW$V(*^VNW$(6v8w4VW$N^V",
+    [1] = "WOAH YOU HIT SOMEONE!",
     [2] = game:GetService("Players").LocalPlayer.Character:FindFirstChild("<TN~!1>"),
     [3] = workspace.MainMapFolder.MainArea.Interactables.Gong.Gong,
-    [4] = CFrame.new(3240.5966796875, 211.29685974121094, -3973.863037109375) * CFrame.Angles(3.141592502593994, 0.653179407119751, -3.1415927410125732)
+    [4] = CFrame.new(3230.12353515625, 211.27938842773438, -3970.89794921875, -0.5274049043655396, -0.00941790547221899, -0.849561870098114, -0.002879450796172023, 0.9999526143074036, -0.009297525510191917, 0.8496091961860657, -0.0024572887923568487, -0.5274070501327515)
 }
 
-game:GetService("ReplicatedStorage"):FindFirstChild("s\239\188\150\239\188\153y ZO53\239\188\152v\239\188\151wato\239\188\144u\227\129\170\227\129\148\227\130\138\227\130\134\227\129\141\239\189\158n\239\188\144\226\128\139wat\239\188\145dt\227\128\130"):FireServer(unpack(args))
+game:GetService("ReplicatedStorage"):WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO"):FireServer(unpack(args))
 
 end)
 
@@ -12766,14 +12837,14 @@ spamTab.newButton("Dog Sound Spam", "Toggle dog sound spam (equip weapon first)"
         spawn(function()
             while isDogSpamRunning do
                 local args = {
-                    [1] = "#%mgvu3980v5unm(*#$NU%^V$N(*^Y984ny6w4v9YUNB^(*BW$V(*^VNW$(6v8w4VW$N^V",
+                    [1] = "WOAH YOU HIT SOMEONE!",
                     [2] = game:GetService("Players").LocalPlayer.Character:FindFirstChild("<TN~!1>"),
                     [3] = workspace.MainMapFolder.MainArea.EasterEggs.dog.dogdoing,
-                    [4] = CFrame.new(3323.000244140625, 243.20310974121094, -4087.83642578125) * CFrame.Angles(-3.141592502593994, -1.1711745262145996, -3.141592502593994)
+                    [4] = CFrame.new(3322.80322265625, 243.20310974121094, -4087.52001953125, -0.4447162449359894, -1.1065712612889911e-07, -0.8956714868545532, -2.0028368297175803e-08, 1, -1.1360211971123135e-07, 0.8956714868545532, -3.25818696467195e-08, -0.4447162449359894)
                 }
                 
                 for i = 1, 10 do
-                    game:GetService("ReplicatedStorage"):FindFirstChild("s\239\188\150\239\188\153y ZO53\239\188\152v\239\188\151wato\239\188\144u\227\129\170\227\129\148\227\130\138\227\130\134\227\129\141\239\189\158n\239\188\144\226\128\139wat\239\188\145dt\227\128\130"):FireServer(unpack(args))
+                    game:GetService("ReplicatedStorage"):WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO"):FireServer(unpack(args))
                 end
                 
                 wait(dogSpamDelay)
@@ -12813,14 +12884,14 @@ spamTab.newButton("Cat Sound Spam", "Toggle cat sound spam (equip weapon)", func
         spawn(function()
             while isCatSpamRunning do
                 local args = {
-                    [1] = "#%mgvu3980v5unm(*#$NU%^V$N(*^Y984ny6w4v9YUNB^(*BW$V(*^VNW$(6v8w4VW$N^V",
+                    [1] = "WOAH YOU HIT SOMEONE!",
                     [2] = game:GetService("Players").LocalPlayer.Character:FindFirstChild("<TN~!1>"),
                     [3] = workspace.MAP.TradingArea.jcat.node_id60,
-                    [4] = CFrame.new(3103.838134765625, 229.2150421142578, -3917.24951171875) * CFrame.Angles(-6.923095696720338e-08, -0.22320303320884705, 3.1562322533318365e-08)
+                    [4] = CFrame.new(3103.956298828125, 229.25205993652344, -3917.28564453125, 0.8770804405212402, -2.1043055298264335e-08, -0.4803435504436493, 9.51265910487109e-09, 1, -2.643876051422467e-08, 0.4803435504436493, 1.8619575214984252e-08, 0.8770804405212402)
                 }
                 
                 for i = 1, 6 do
-                    game:GetService("ReplicatedStorage"):FindFirstChild("s\239\188\150\239\188\153y ZO53\239\188\152v\239\188\151wato\239\188\144u\227\129\170\227\129\148\227\130\138\227\130\134\227\129\141\239\189\158n\239\188\144\226\128\139wat\239\188\145dt\227\128\130"):FireServer(unpack(args))
+                    game:GetService("ReplicatedStorage"):WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO"):FireServer(unpack(args))
                 end
                 
                 wait(catSpamDelay)
@@ -12862,12 +12933,12 @@ local function createTool(name, remoteArgs)
                 local localChar = Players.LocalPlayer.Character
                 if character and localChar then
                     local weapon = localChar:FindFirstChild("<TN~!1>")
-                    local remote = ReplicatedStorage:FindFirstChild("s\239\188\150\239\188\153y ZO53\239\188\152v\239\188\151wato\239\188\144u\227\129\170\227\129\148\227\130\138\227\130\134\227\129\141\239\189\158n\239\188\144\226\128\139wat\239\188\145dt\227\128\130")
+                    local remote = ReplicatedStorage:WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO")
                     if remote and weapon then
                         local args = {
                             [1] = remoteArgs[1],
                             [2] = weapon,
-                            [3] = remoteArgs[2] == "character" and character or character:FindFirstChild("Left Arm"),
+                            [3] = remoteArgs[2] == "character" and character or character:FindFirstChild("Head"),
                             [4] = localChar.HumanoidRootPart.CFrame
                         }
                         remote:FireServer(unpack(args))
@@ -12880,8 +12951,8 @@ local function createTool(name, remoteArgs)
     return tool
 end
 
-local killTool = createTool("Kick Tool", {"SGFenfjEKASNFJKENA", "character"})
-local kickTool = createTool("Kill Tool", {"#%mgvu3980v5unm(*#$NU%^V$N(*^Y984ny6w4v9YUNB^(*BW$V(*^VNW$(6v8w4VW$N^V", "leftarm"})
+local killTool = createTool("Kick Tool", {"KICKYWICKY", "character"})
+local kickTool = createTool("Kill Tool", {"WOAH YOU HIT SOMEONE!", "leftarm"})
 
 local function toggleTool(tool)
     local backpack = Players.LocalPlayer.Backpack
