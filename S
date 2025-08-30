@@ -12418,6 +12418,187 @@ end)
 createGui()
 ]]
 
+local script7 = [[
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Variables to track state and position
+local isEnabled = false
+local connection = nil
+local guiPosition = UDim2.new(0.85, 0, 0.1, 0)
+local screenGui, toggleFrame, toggleButton, statusLabel
+
+-- Function to get the target path
+local function getTargetPath()
+    local playerName = player.Name
+    local path = workspace:FindFirstChild(playerName)
+    
+    if path then
+        return path:FindFirstChild("<TN~!1>")
+    end
+    
+    return nil
+end
+
+-- Function to disable stun
+local function disableStun()
+    local target = getTargetPath()
+    
+    if target and target:GetAttribute("Stunned") then
+        target:SetAttribute("Stunned", false)
+    end
+    
+    -- Also check backpack
+    local backpackItem = player.Backpack:FindFirstChild("<TN~!1>")
+    if backpackItem and backpackItem:GetAttribute("Stunned") then
+        backpackItem:SetAttribute("Stunned", false)
+    end
+end
+
+-- Function to update GUI state
+local function updateGuiState()
+    if not toggleButton or not statusLabel then
+        return
+    end
+    
+    if isEnabled then
+        toggleButton.Text = "ENABLED"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+        statusLabel.Text = "ON"
+    else
+        toggleButton.Text = "DISABLED"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        statusLabel.Text = "OFF"
+    end
+end
+
+-- Toggle function
+local function toggleStunDisabler()
+    isEnabled = not isEnabled
+    
+    updateGuiState()
+    
+    if isEnabled then
+        -- Start the loop
+        if connection then
+            connection:Disconnect()
+        end
+        
+        connection = RunService.Heartbeat:Connect(function()
+            disableStun()
+        end)
+    else
+        -- Stop the loop
+        if connection then
+            connection:Disconnect()
+            connection = nil
+        end
+    end
+end
+
+-- Function to create the GUI
+local function createGui()
+    -- Remove existing GUI if it exists
+    local existingGui = playerGui:FindFirstChild("StunToggleGui")
+    if existingGui then
+        existingGui:Destroy()
+    end
+    
+    -- Create new GUI
+    screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "StunToggleGui"
+    screenGui.ResetOnSpawn = false -- Important to prevent GUI from disappearing
+    screenGui.Parent = playerGui
+    
+    toggleFrame = Instance.new("Frame")
+    toggleFrame.Size = UDim2.new(0, 150, 0, 50)
+    toggleFrame.Position = guiPosition
+    toggleFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    toggleFrame.BorderSizePixel = 2
+    toggleFrame.BorderColor3 = Color3.fromRGB(80, 80, 80)
+    toggleFrame.Active = true
+    toggleFrame.Draggable = true
+    toggleFrame.Parent = screenGui
+    
+    -- Track position changes
+    toggleFrame:GetPropertyChangedSignal("Position"):Connect(function()
+        guiPosition = toggleFrame.Position
+    end)
+    
+    toggleButton = Instance.new("TextButton")
+    toggleButton.Size = UDim2.new(0.65, 0, 0.8, 0)
+    toggleButton.Position = UDim2.new(0.025, 0, 0.1, 0)
+    toggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    toggleButton.Text = "DISABLED"
+    toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    toggleButton.TextScaled = true
+    toggleButton.Font = Enum.Font.SourceSansBold
+    toggleButton.BorderSizePixel = 0
+    toggleButton.Parent = toggleFrame
+    
+    statusLabel = Instance.new("TextLabel")
+    statusLabel.Size = UDim2.new(0.25, 0, 0.8, 0)
+    statusLabel.Position = UDim2.new(0.7, 0, 0.1, 0)
+    statusLabel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    statusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    statusLabel.Text = "OFF"
+    statusLabel.TextScaled = true
+    statusLabel.Font = Enum.Font.SourceSansBold
+    statusLabel.BorderSizePixel = 0
+    statusLabel.Parent = toggleFrame
+    
+    -- Set up button click event
+    toggleButton.MouseButton1Click:Connect(toggleStunDisabler)
+    
+    -- Update visual state
+    updateGuiState()
+    
+    -- Cleanup on script termination
+    screenGui.AncestryChanged:Connect(function(_, parent)
+        if parent == nil and connection then
+            connection:Disconnect()
+        end
+    end)
+end
+
+-- Handle player respawning
+local function onRespawn()
+    -- Give a small delay to ensure character is fully loaded
+    task.wait(0.1)
+    createGui()
+    
+    -- Ensure connection state is consistent
+    if isEnabled and not connection then
+        connection = RunService.Heartbeat:Connect(function()
+            disableStun()
+        end)
+    end
+end
+
+-- Create the initial GUI
+createGui()
+
+-- Set up character added event for respawn
+player.CharacterAdded:Connect(onRespawn)
+
+-- Create a timer to ensure we run at the specified interval
+local timeSinceLastCheck = 0
+RunService.Heartbeat:Connect(function(deltaTime)
+    if isEnabled then
+        timeSinceLastCheck = timeSinceLastCheck + deltaTime
+        
+        if timeSinceLastCheck >= 0.05 then
+            disableStun()
+            timeSinceLastCheck = 0
+        end
+    end
+end)
+]]
+
 local script8 = [[
 local DrRayLibrary = loadstring(game:HttpGet("https://raw.githubusercontent.com/AZYsGithub/DrRay-UI-Library/main/DrRay.lua"))()
 local window = DrRayLibrary:Load("• Samurai GUI •", "Default")
