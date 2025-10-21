@@ -4348,6 +4348,7 @@ CMDs[#CMDs + 1] = {NAME = 'explorer / dex', DESC = 'Opens DEX by Moon'}
 CMDs[#CMDs + 1] = {NAME = 'olddex / odex', DESC = 'Opens Old DEX by Moon'}
 CMDs[#CMDs + 1] = {NAME = 'remotespy / rspy', DESC = 'Opens Simple Spy V3'}
 CMDs[#CMDs + 1] = {NAME = 'remotespyC / rspyC', DESC = 'Opens Simple Spy V3 client version'}
+CMDs[#CMDs + 1] = {NAME = 'DexPlusPlus / Dex++'', DESC = 'Opens Dex++'}
 CMDs[#CMDs + 1] = {NAME = 'bashdex / dexkeyless', DESC = 'Opens Old DEX bash version'}
 CMDs[#CMDs + 1] = {NAME = 'remotespy / rspy', DESC = 'Opens Simple Spy V3'}
 CMDs[#CMDs + 1] = {NAME = 'getattribute / attributes', DESC = 'Opens Attribute Getting GUI'}
@@ -4361,6 +4362,8 @@ CMDs[#CMDs + 1] = {NAME = 'Aimbot / AimbotGUI', DESC = 'Universal Aimbot and Esp
 CMDs[#CMDs + 1] = {NAME = 'ShowChat / ChatGUI', DESC = 'External CHATGUI'}
 CMDs[#CMDs + 1] = {NAME = 'GameplayPaused / GamePause', DESC = 'No Gameplay Pause'}
 CMDs[#CMDs + 1] = {NAME = 'RemovePrompts / Noprompt', DESC = 'New method remove robux purchase GUIs'}
+CMDs[#CMDs + 1] = {NAME = 'Friendspy / tellfriends', DESC = 'Prints Who is Friend with Who in Console'}
+CMDs[#CMDs + 1] = {NAME = 'print [text]', DESC = 'Print any text to console'}
 CMDs[#CMDs + 1] = {NAME = 'Evade / Evade GUI', DESC = 'Evade script'}
 CMDs[#CMDs + 1] = {NAME = 'Zoweapon remover / weaponremover', DESC = 'Zo weapon remover GUI'}
 CMDs[#CMDs + 1] = {NAME = 'Zocontrolsset / zocontrols', DESC = 'Zo controls setting GUI'}
@@ -11285,7 +11288,6 @@ end)
 ]]
 
 -- Script 3
-local script3 = [[
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -11299,11 +11301,19 @@ local Camera = workspace.CurrentCamera
 local settings = {
     maxDistance = 7,
     showHighlight = true,
-    targetMode = "Nearest", -- "Nearest" or "Crosshair"
+    targetMode = "Nearest",
     weaponOutEnabled = false,
-    weaponOutDistance = 8,
+    weaponOutDistance = 10,
     weaponV2Enabled = false,
-    guiLocked = false
+    guiLocked = false,
+    checkSpeed = 0.1,
+    extremeFast = false,
+    doBlockAnimation = false,
+    alwaysWhileEquipped = false,
+    animStopDelay = 0.6,
+    animStopMethod = "Both", -- "Stunned", "Parry", "Both"
+    rspyEnabled = false,
+    rspyUpdateDelay = 12
 }
 
 local HIGHLIGHT_COLOR = Color3.fromRGB(255, 255, 255)
@@ -11311,14 +11321,227 @@ local HIGHLIGHT_FILL_TRANSPARENCY = 0.9
 local HIGHLIGHT_OUTLINE_TRANSPARENCY = 0
 local CROSSHAIR_OFFSET = Vector2.new(0, -30)
 
--- Create ScreenGui that persists across respawns
+-- RSpy System Variables
+local currentRemotePath = "k\239\188\151l\239\188\148ZO\227\129\158wat\227\129\155\227\129\134\227\129\160"
+local spiedRemotePath = nil
+local originalNamecall = nil
+local configFolder = "TargetTrackerConfig"
+local configFile = "remote_config.txt"
+
+-- Animation System Variables
+local cachedAnimation = nil
+local cachedAnimationId = nil
+local lastAnimationUpdate = 0
+local currentAnimationTrack = nil
+local animationStartTime = 0
+
+-- File system functions
+local function saveRemoteToConfig(remotePath)
+    if not isfolder then return end
+    if not writefile then return end
+    
+    if not isfolder(configFolder) then
+        makefolder(configFolder)
+    end
+    
+    writefile(configFolder .. "/" .. configFile, remotePath)
+end
+
+local function loadRemoteFromConfig()
+    if not isfile then return nil end
+    if not readfile then return nil end
+    
+    if isfile(configFolder .. "/" .. configFile) then
+        return readfile(configFolder .. "/" .. configFile)
+    end
+    
+    return nil
+end
+
+-- RSpy System
+local function setupRSpy()
+    if originalNamecall then return end
+    
+    local hookfunction = hookfunction
+    local getnamecallmethod = getnamecallmethod
+    
+    if not hookfunction or not getnamecallmethod then
+        warn("Executor doesn't support required functions - RSpy disabled")
+        return
+    end
+    
+    originalNamecall = hookfunction(getrawmetatable(game).__namecall, function(...)
+        local method = getnamecallmethod()
+        local self = ...
+        local args = {...}
+        
+        if method == "FireServer" and typeof(self) == "Instance" then
+            -- Check if this matches our attack pattern
+            if #args >= 4 then
+                local arg1 = args[2]
+                local arg2 = args[3]
+                local arg3 = args[4]
+                
+                -- Pattern: String, Tool/Part, Part/Tool, CFrame
+                if typeof(arg1) == "string" and 
+                   (typeof(arg2) == "Instance") and 
+                   (typeof(arg3) == "Instance") and
+                   (arg1:find("HIT") or arg1:find("WOAH") or arg1:find("BLOCK")) then
+                    
+                    -- Found potential remote
+                    local remoteName = self.Name
+                    if remoteName ~= spiedRemotePath then
+                        spiedRemotePath = remoteName
+                        currentRemotePath = remoteName
+                        saveRemoteToConfig(remoteName)
+                        print("[RSpy] New remote detected:", remoteName)
+                    end
+                end
+            end
+        end
+        
+        return originalNamecall(...)
+    end)
+end
+
+local function destroyRSpy()
+    if originalNamecall then
+        hookfunction(getrawmetatable(game).__namecall, originalNamecall)
+        originalNamecall = nil
+    end
+end
+
+-- Initialize remote from config
+local function initializeRemote()
+    local savedRemote = loadRemoteFromConfig()
+    if savedRemote and savedRemote ~= "" then
+        currentRemotePath = savedRemote
+        print("[Config] Loaded remote:", savedRemote)
+    end
+end
+
+-- Animation System
+local function findBlockAnimation()
+    local tool = nil
+    
+    -- Check character first
+    if LocalPlayer.Character then
+        tool = LocalPlayer.Character:FindFirstChild("<TN~!1>")
+    end
+    
+    -- Check backpack if not in character
+    if not tool and LocalPlayer:FindFirstChild("Backpack") then
+        tool = LocalPlayer.Backpack:FindFirstChild("<TN~!1>")
+    end
+    
+    if tool then
+        local blockValue = tool:FindFirstChild("Block")
+        if blockValue and blockValue:IsA("StringValue") then
+            return blockValue.Value
+        end
+    end
+    
+    return nil
+end
+
+local function updateCachedAnimation()
+    local animId = findBlockAnimation()
+    
+    if animId and animId ~= cachedAnimationId then
+        cachedAnimationId = animId
+        
+        -- Create animation object
+        local anim = Instance.new("Animation")
+        anim.AnimationId = animId
+        cachedAnimation = anim
+        
+        print("[Animation] Cached new animation:", animId)
+    end
+end
+
+local function playBlockAnimation()
+    if not settings.doBlockAnimation then return end
+    if not LocalPlayer.Character then return end
+    
+    local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
+    if not humanoid then return end
+    
+    -- Check if weapon is equipped
+    local weaponEquipped = LocalPlayer.Character:FindFirstChild("<TN~!1>")
+    if not weaponEquipped then return end
+    
+    -- If already playing and "always while equipped" is off, don't restart
+    if currentAnimationTrack and currentAnimationTrack.IsPlaying and not settings.alwaysWhileEquipped then
+        return
+    end
+    
+    if cachedAnimation then
+        -- Stop previous animation
+        if currentAnimationTrack then
+            currentAnimationTrack:Stop()
+        end
+        
+        -- Load and play new animation
+        currentAnimationTrack = humanoid:LoadAnimation(cachedAnimation)
+        currentAnimationTrack:Play()
+        animationStartTime = tick()
+    end
+end
+
+local function stopBlockAnimation()
+    if currentAnimationTrack and currentAnimationTrack.IsPlaying then
+        currentAnimationTrack:Stop()
+        currentAnimationTrack = nil
+    end
+end
+
+local function checkAnimationStopConditions(target)
+    if not currentAnimationTrack or not currentAnimationTrack.IsPlaying then
+        return
+    end
+    
+    local shouldStop = false
+    local currentTime = tick()
+    
+    -- Check time-based stop
+    if currentTime - animationStartTime >= settings.animStopDelay then
+        shouldStop = true
+    end
+    
+    -- Check target conditions
+    if target and target.Character then
+        local targetTool = target.Character:FindFirstChildOfClass("Tool")
+        
+        if targetTool then
+            if settings.animStopMethod == "Stunned" or settings.animStopMethod == "Both" then
+                local stunnedAttr = targetTool:GetAttribute("Stunned")
+                if stunnedAttr == true then
+                    shouldStop = true
+                end
+            end
+            
+            if settings.animStopMethod == "Parry" or settings.animStopMethod == "Both" then
+                local parryAttr = targetTool:GetAttribute("Parry")
+                if parryAttr == false then
+                    shouldStop = true
+                end
+            end
+        end
+    end
+    
+    if shouldStop then
+        stopBlockAnimation()
+    end
+end
+
+-- Create ScreenGui
 local function createGui()
     local gui = Instance.new("ScreenGui")
     gui.Name = "TargetTrackerGui"
     gui.ResetOnSpawn = false
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     
-    -- Main frame (draggable area) - more compact now
+    -- Main frame
     local frame = Instance.new("Frame")
     frame.Name = "MainFrame"
     frame.Size = UDim2.new(0, 200, 0, 50)
@@ -11328,12 +11551,11 @@ local function createGui()
     frame.BorderSizePixel = 0
     frame.Parent = gui
     
-    -- Add corner radius to main frame
     local frameCorner = Instance.new("UICorner")
     frameCorner.CornerRadius = UDim.new(0, 8)
     frameCorner.Parent = frame
     
-    -- Lock Toggle Button (Top Right)
+    -- Lock Toggle
     local lockToggle = Instance.new("TextButton")
     lockToggle.Name = "LockToggle"
     lockToggle.Size = UDim2.new(0, 12, 0, 12)
@@ -11348,7 +11570,7 @@ local function createGui()
     lockCorner.CornerRadius = UDim.new(1, 0)
     lockCorner.Parent = lockToggle
     
-    -- Settings Toggle Button (Beside Lock)
+    -- Settings Toggle
     local settingsToggle = Instance.new("TextButton")
     settingsToggle.Name = "SettingsToggle"
     settingsToggle.Size = UDim2.new(0, 18, 0, 18)
@@ -11364,7 +11586,7 @@ local function createGui()
     settingsCorner.CornerRadius = UDim.new(0, 4)
     settingsCorner.Parent = settingsToggle
     
-    -- Button (shows target name)
+    -- Button
     local button = Instance.new("TextButton")
     button.Name = "AttackButton"
     button.Size = UDim2.new(1, -20, 0, 30)
@@ -11386,8 +11608,8 @@ local function createGui()
     -- Settings Panel
     local settingsPanel = Instance.new("Frame")
     settingsPanel.Name = "SettingsPanel"
-    settingsPanel.Size = UDim2.new(0, 250, 0, 300)
-    settingsPanel.Position = UDim2.new(0.5, -125, 0.3, 0)
+    settingsPanel.Size = UDim2.new(0, 280, 0, 400)
+    settingsPanel.Position = UDim2.new(0.5, -140, 0.3, 0)
     settingsPanel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     settingsPanel.BackgroundTransparency = 0.3
     settingsPanel.BorderSizePixel = 2
@@ -11399,7 +11621,7 @@ local function createGui()
     panelCorner.CornerRadius = UDim.new(0, 8)
     panelCorner.Parent = settingsPanel
     
-    -- Settings Panel Title
+    -- Panel Title
     local panelTitle = Instance.new("TextLabel")
     panelTitle.Size = UDim2.new(1, 0, 0, 30)
     panelTitle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
@@ -11414,14 +11636,14 @@ local function createGui()
     titleCorner.CornerRadius = UDim.new(0, 8)
     titleCorner.Parent = panelTitle
     
-    -- Scrolling Frame for settings
+    -- Scrolling Frame
     local scrollFrame = Instance.new("ScrollingFrame")
     scrollFrame.Size = UDim2.new(1, -10, 1, -40)
     scrollFrame.Position = UDim2.new(0, 5, 0, 35)
     scrollFrame.BackgroundTransparency = 1
     scrollFrame.BorderSizePixel = 0
     scrollFrame.ScrollBarThickness = 6
-    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 450)
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 750)
     scrollFrame.Parent = settingsPanel
     
     local function createLabel(text, yPos)
@@ -11432,7 +11654,7 @@ local function createGui()
         label.Text = text
         label.TextColor3 = Color3.fromRGB(255, 255, 255)
         label.Font = Enum.Font.Gotham
-        label.TextSize = 13
+        label.TextSize = 12
         label.TextXAlignment = Enum.TextXAlignment.Left
         label.Parent = scrollFrame
         return label
@@ -11461,7 +11683,7 @@ local function createGui()
     local function createTextBox(name, yPos, defaultValue)
         local textBox = Instance.new("TextBox")
         textBox.Name = name
-        textBox.Size = UDim2.new(0, 60, 0, 25)
+        textBox.Size = UDim2.new(0, 60, 0, 22)
         textBox.Position = UDim2.new(1, -65, 0, yPos)
         textBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
         textBox.BackgroundTransparency = 0.3
@@ -11470,7 +11692,7 @@ local function createGui()
         textBox.Text = tostring(defaultValue)
         textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
         textBox.Font = Enum.Font.Gotham
-        textBox.TextSize = 13
+        textBox.TextSize = 12
         textBox.Parent = scrollFrame
         
         local boxCorner = Instance.new("UICorner")
@@ -11483,7 +11705,7 @@ local function createGui()
     local function createModeButton(name, yPos, text)
         local modeBtn = Instance.new("TextButton")
         modeBtn.Name = name
-        modeBtn.Size = UDim2.new(0, 90, 0, 25)
+        modeBtn.Size = UDim2.new(0, 90, 0, 22)
         modeBtn.Position = UDim2.new(1, -95, 0, yPos)
         modeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
         modeBtn.BackgroundTransparency = 0.3
@@ -11492,7 +11714,7 @@ local function createGui()
         modeBtn.Text = text
         modeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         modeBtn.Font = Enum.Font.GothamBold
-        modeBtn.TextSize = 12
+        modeBtn.TextSize = 11
         modeBtn.Parent = scrollFrame
         
         local btnCorner = Instance.new("UICorner")
@@ -11502,70 +11724,106 @@ local function createGui()
         return modeBtn
     end
     
+    local function createSeparator(yPos)
+        local sep = Instance.new("Frame")
+        sep.Size = UDim2.new(1, -10, 0, 2)
+        sep.Position = UDim2.new(0, 5, 0, yPos)
+        sep.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+        sep.BorderSizePixel = 0
+        sep.Parent = scrollFrame
+        return sep
+    end
+    
     -- Create settings elements
     local yOffset = 10
     
+    createLabel("Check Speed (seconds):", yOffset)
+    local checkSpeedInput = createTextBox("CheckSpeedInput", yOffset, settings.checkSpeed)
+    yOffset = yOffset + 30
+    
+    createLabel("Extreme Fast Mode:", yOffset)
+    local extremeFastToggle = createToggle("ExtremeFastToggle", yOffset, settings.extremeFast)
+    yOffset = yOffset + 30
+    
     createLabel("Max Distance (Studs):", yOffset)
     local studsInput = createTextBox("StudsInput", yOffset, settings.maxDistance)
-    yOffset = yOffset + 35
+    yOffset = yOffset + 30
     
     createLabel("Show Highlight:", yOffset)
     local highlightToggle = createToggle("HighlightToggle", yOffset, settings.showHighlight)
-    yOffset = yOffset + 35
+    yOffset = yOffset + 30
     
     createLabel("Target Mode:", yOffset)
     local modeButton = createModeButton("ModeButton", yOffset, settings.targetMode)
-    yOffset = yOffset + 40
+    yOffset = yOffset + 35
     
-    -- Separator
-    local separator1 = Instance.new("Frame")
-    separator1.Size = UDim2.new(1, -10, 0, 2)
-    separator1.Position = UDim2.new(0, 5, 0, yOffset)
-    separator1.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-    separator1.BorderSizePixel = 0
-    separator1.Parent = scrollFrame
+    createSeparator(yOffset)
     yOffset = yOffset + 15
     
     createLabel("Weapon Out if Enemy:", yOffset)
     local weaponToggle = createToggle("WeaponToggle", yOffset, settings.weaponOutEnabled)
-    yOffset = yOffset + 35
+    yOffset = yOffset + 30
     
     createLabel("Weapon Distance (Studs):", yOffset)
     local weaponDistInput = createTextBox("WeaponDistInput", yOffset, settings.weaponOutDistance)
-    yOffset = yOffset + 35
+    yOffset = yOffset + 30
     
     createLabel("Weapon V2 (Parry):", yOffset)
     local weaponV2Toggle = createToggle("WeaponV2Toggle", yOffset, settings.weaponV2Enabled)
     yOffset = yOffset + 35
     
-    return gui, frame, button, lockToggle, settingsToggle, settingsPanel, 
-           studsInput, highlightToggle, modeButton, weaponToggle, weaponDistInput, weaponV2Toggle
+    createSeparator(yOffset)
+    yOffset = yOffset + 15
+    
+    createLabel("Do Block Animation:", yOffset)
+    local blockAnimToggle = createToggle("BlockAnimToggle", yOffset, settings.doBlockAnimation)
+    yOffset = yOffset + 30
+    
+    createLabel("Always While Equipped:", yOffset)
+    local alwaysEquippedToggle = createToggle("AlwaysEquippedToggle", yOffset, settings.alwaysWhileEquipped)
+    yOffset = yOffset + 30
+    
+    createLabel("Anim Stop Delay (sec):", yOffset)
+    local animStopInput = createTextBox("AnimStopInput", yOffset, settings.animStopDelay)
+    yOffset = yOffset + 30
+    
+    createLabel("Anim Stop Method:", yOffset)
+    local animStopMethodBtn = createModeButton("AnimStopMethodBtn", yOffset, settings.animStopMethod)
+    yOffset = yOffset + 35
+    
+    createSeparator(yOffset)
+    yOffset = yOffset + 15
+    
+    createLabel("RSpy Method:", yOffset)
+    local rspyToggle = createToggle("RSpyToggle", yOffset, settings.rspyEnabled)
+    yOffset = yOffset + 30
+    
+    createLabel("RSpy Update Delay (sec):", yOffset)
+    local rspyDelayInput = createTextBox("RSpyDelayInput", yOffset, settings.rspyUpdateDelay)
+    yOffset = yOffset + 30
+    
+    return gui, frame, button, lockToggle, settingsToggle, settingsPanel,
+           checkSpeedInput, extremeFastToggle, studsInput, highlightToggle, modeButton,
+           weaponToggle, weaponDistInput, weaponV2Toggle,
+           blockAnimToggle, alwaysEquippedToggle, animStopInput, animStopMethodBtn,
+           rspyToggle, rspyDelayInput
 end
 
 -- Make frame draggable
 local function makeDraggable(frame, button, lockToggle, settingsToggle)
     local dragging = false
-    local dragInput
-    local dragStart
-    local startPos
+    local dragInput, dragStart, startPos
     
     local function updateInput(input)
         local delta = input.Position - dragStart
-        frame.Position = UDim2.new(
-            startPos.X.Scale, 
-            startPos.X.Offset + delta.X, 
-            startPos.Y.Scale, 
-            startPos.Y.Offset + delta.Y
-        )
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
     
     frame.InputBegan:Connect(function(input)
         if settings.guiLocked then return end
-        
-        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             local mousePos = input.Position
             
-            -- Check if clicking button
             local buttonAbsPos = button.AbsolutePosition
             local buttonAbsSize = button.AbsoluteSize
             if mousePos.X >= buttonAbsPos.X and mousePos.X <= buttonAbsPos.X + buttonAbsSize.X and
@@ -11573,7 +11831,6 @@ local function makeDraggable(frame, button, lockToggle, settingsToggle)
                 return
             end
             
-            -- Check if clicking lock toggle
             local lockAbsPos = lockToggle.AbsolutePosition
             local lockAbsSize = lockToggle.AbsoluteSize
             if mousePos.X >= lockAbsPos.X and mousePos.X <= lockAbsPos.X + lockAbsSize.X and
@@ -11581,7 +11838,6 @@ local function makeDraggable(frame, button, lockToggle, settingsToggle)
                 return
             end
             
-            -- Check if clicking settings toggle
             local settingsAbsPos = settingsToggle.AbsolutePosition
             local settingsAbsSize = settingsToggle.AbsoluteSize
             if mousePos.X >= settingsAbsPos.X and mousePos.X <= settingsAbsPos.X + settingsAbsSize.X and
@@ -11617,24 +11873,17 @@ end
 -- Make settings panel draggable
 local function makeSettingsDraggable(panel)
     local dragging = false
-    local dragInput
-    local dragStart
-    local startPos
+    local dragInput, dragStart, startPos
     
     local function updateInput(input)
         local delta = input.Position - dragStart
-        panel.Position = UDim2.new(
-            startPos.X.Scale, 
-            startPos.X.Offset + delta.X, 
-            startPos.Y.Scale, 
-            startPos.Y.Offset + delta.Y
-        )
+        panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
     
     local title = panel:FindFirstChild("TextLabel")
     if title then
         title.InputBegan:Connect(function(input)
-            if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                 dragging = true
                 dragStart = input.Position
                 startPos = panel.Position
@@ -11661,7 +11910,7 @@ local function makeSettingsDraggable(panel)
     end
 end
 
--- Create highlight for target
+-- Create highlight
 local function createHighlight(character)
     if not settings.showHighlight then return nil end
     
@@ -11681,7 +11930,7 @@ local function createHighlight(character)
     return highlight
 end
 
--- Check if an instance is a player character and if they're alive
+-- Check if player character
 local function isPlayerCharacter(instance)
     if LocalPlayer.Character and (instance == LocalPlayer.Character) then
         return false, nil
@@ -11744,7 +11993,7 @@ function findPlayerNameForDisguise(character)
     return character.Name
 end
 
--- Find nearest target based on mode
+-- Find nearest target
 local function findNearestTarget()
     if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
         return nil
@@ -11757,7 +12006,6 @@ local function findNearestTarget()
     local nearestPlayer = nil
     
     if settings.targetMode == "Nearest" then
-        -- Find nearest to LocalPlayer
         for _, instance in pairs(workspace:GetChildren()) do
             local isPlayer, player = isPlayerCharacter(instance)
             
@@ -11777,7 +12025,6 @@ local function findNearestTarget()
             end
         end
     elseif settings.targetMode == "Crosshair" then
-        -- Find nearest to crosshair (screen center with offset)
         local screenSize = Camera.ViewportSize
         local crosshairPos = Vector2.new(screenSize.X / 2, screenSize.Y / 2) + CROSSHAIR_OFFSET
         
@@ -11794,7 +12041,6 @@ local function findNearestTarget()
                 if humanoidRootPart and humanoid and humanoid.Health > 0 then
                     local distance = (localPosition - humanoidRootPart.Position).Magnitude
                     
-                    -- Must be within max distance
                     if distance <= settings.maxDistance then
                         local screenPos, onScreen = Camera:WorldToViewportPoint(humanoidRootPart.Position)
                         
@@ -11815,9 +12061,13 @@ local function findNearestTarget()
     return nearestPlayer
 end
 
--- Fire the remote with target information
+-- Fire remote
 local function fireTargetRemote(target)
-    local remoteEvent = ReplicatedStorage:WaitForChild("k\239\188\151l\239\188\148ZO\227\129\158wat\227\129\155\227\129\134\227\129\160")
+    local remoteEvent = ReplicatedStorage:FindFirstChild(currentRemotePath)
+    
+    if not remoteEvent then
+        remoteEvent = ReplicatedStorage:WaitForChild(currentRemotePath, 5)
+    end
     
     if remoteEvent and target and target.Character then
         local targetCharacter = target.Character
@@ -11839,7 +12089,7 @@ local function fireTargetRemote(target)
     end
 end
 
--- Weapon auto-equip system
+-- Weapon system
 local lastWeaponCheck = 0
 
 local function equipWeapon()
@@ -11848,10 +12098,8 @@ local function equipWeapon()
     local backpack = LocalPlayer:FindFirstChild("Backpack")
     if not backpack then return end
     
-    -- Find first tool in backpack
     local tool = backpack:FindFirstChildOfClass("Tool")
     if tool then
-        -- Check if already equipped
         local equippedTool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
         if not equippedTool then
             tool.Parent = LocalPlayer.Character
@@ -11881,14 +12129,12 @@ local function checkWeaponSystem()
                     
                     if tool then
                         if settings.weaponV2Enabled then
-                            -- V2: Check for Parry attribute
                             local parryAttr = tool:GetAttribute("Parry")
                             if parryAttr == true then
                                 shouldEquip = true
                                 break
                             end
                         else
-                            -- Normal: Just check if tool exists
                             shouldEquip = true
                             break
                         end
@@ -11901,10 +12147,15 @@ local function checkWeaponSystem()
     return shouldEquip
 end
 
--- Main script functionality
+-- Main
 local function main()
-    local gui, frame, button, lockToggle, settingsToggle, settingsPanel, 
-          studsInput, highlightToggle, modeButton, weaponToggle, weaponDistInput, weaponV2Toggle = createGui()
+    initializeRemote()
+    
+    local gui, frame, button, lockToggle, settingsToggle, settingsPanel,
+          checkSpeedInput, extremeFastToggle, studsInput, highlightToggle, modeButton,
+          weaponToggle, weaponDistInput, weaponV2Toggle,
+          blockAnimToggle, alwaysEquippedToggle, animStopInput, animStopMethodBtn,
+          rspyToggle, rspyDelayInput = createGui()
     
     makeDraggable(frame, button, lockToggle, settingsToggle)
     makeSettingsDraggable(settingsPanel)
@@ -11913,20 +12164,32 @@ local function main()
     local currentTarget = nil
     local currentHighlight = nil
     
-    -- Lock toggle functionality
+    -- Lock toggle
     lockToggle.MouseButton1Click:Connect(function()
         settings.guiLocked = not settings.guiLocked
-        
-        if settings.guiLocked then
-            lockToggle.BackgroundColor3 = Color3.fromRGB(100, 30, 30) -- Darkish red
+        lockToggle.BackgroundColor3 = settings.guiLocked and Color3.fromRGB(100, 30, 30) or Color3.fromRGB(30, 30, 30)
+    end)
+    
+    -- Settings toggle
+    settingsToggle.MouseButton1Click:Connect(function()
+        settingsPanel.Visible = not settingsPanel.Visible
+    end)
+    
+    -- Check speed input
+    checkSpeedInput.FocusLost:Connect(function()
+        local value = tonumber(checkSpeedInput.Text)
+        if value and value > 0 then
+            settings.checkSpeed = value
         else
-            lockToggle.BackgroundColor3 = Color3.fromRGB(30, 30, 30) -- Greyish
+            checkSpeedInput.Text = tostring(settings.checkSpeed)
         end
     end)
     
-    -- Settings toggle functionality
-    settingsToggle.MouseButton1Click:Connect(function()
-        settingsPanel.Visible = not settingsPanel.Visible
+    -- Extreme fast toggle
+    extremeFastToggle.MouseButton1Click:Connect(function()
+        settings.extremeFast = not settings.extremeFast
+        extremeFastToggle.Text = settings.extremeFast and "ON" or "OFF"
+        extremeFastToggle.BackgroundColor3 = settings.extremeFast and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
     end)
     
     -- Studs input
@@ -11945,7 +12208,6 @@ local function main()
         highlightToggle.Text = settings.showHighlight and "ON" or "OFF"
         highlightToggle.BackgroundColor3 = settings.showHighlight and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
         
-        -- Remove highlight if disabled
         if not settings.showHighlight and currentHighlight then
             currentHighlight:Destroy()
             currentHighlight = nil
@@ -11954,11 +12216,7 @@ local function main()
     
     -- Mode button
     modeButton.MouseButton1Click:Connect(function()
-        if settings.targetMode == "Nearest" then
-            settings.targetMode = "Crosshair"
-        else
-            settings.targetMode = "Nearest"
-        end
+        settings.targetMode = settings.targetMode == "Nearest" and "Crosshair" or "Nearest"
         modeButton.Text = settings.targetMode
     end)
     
@@ -11986,7 +12244,70 @@ local function main()
         weaponV2Toggle.BackgroundColor3 = settings.weaponV2Enabled and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
     end)
     
-    -- Update target function
+    -- Block animation toggle
+    blockAnimToggle.MouseButton1Click:Connect(function()
+        settings.doBlockAnimation = not settings.doBlockAnimation
+        blockAnimToggle.Text = settings.doBlockAnimation and "ON" or "OFF"
+        blockAnimToggle.BackgroundColor3 = settings.doBlockAnimation and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
+        
+        if not settings.doBlockAnimation then
+            stopBlockAnimation()
+        end
+    end)
+    
+    -- Always equipped toggle
+    alwaysEquippedToggle.MouseButton1Click:Connect(function()
+        settings.alwaysWhileEquipped = not settings.alwaysWhileEquipped
+        alwaysEquippedToggle.Text = settings.alwaysWhileEquipped and "ON" or "OFF"
+        alwaysEquippedToggle.BackgroundColor3 = settings.alwaysWhileEquipped and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
+    end)
+    
+    -- Anim stop delay input
+    animStopInput.FocusLost:Connect(function()
+        local value = tonumber(animStopInput.Text)
+        if value and value > 0 then
+            settings.animStopDelay = value
+        else
+            animStopInput.Text = tostring(settings.animStopDelay)
+        end
+    end)
+    
+    -- Anim stop method button
+    animStopMethodBtn.MouseButton1Click:Connect(function()
+        if settings.animStopMethod == "Stunned" then
+            settings.animStopMethod = "Parry"
+        elseif settings.animStopMethod == "Parry" then
+            settings.animStopMethod = "Both"
+        else
+            settings.animStopMethod = "Stunned"
+        end
+        animStopMethodBtn.Text = settings.animStopMethod
+    end)
+    
+    -- RSpy toggle
+    rspyToggle.MouseButton1Click:Connect(function()
+        settings.rspyEnabled = not settings.rspyEnabled
+        rspyToggle.Text = settings.rspyEnabled and "ON" or "OFF"
+        rspyToggle.BackgroundColor3 = settings.rspyEnabled and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
+        
+        if settings.rspyEnabled then
+            setupRSpy()
+        else
+            destroyRSpy()
+        end
+    end)
+    
+    -- RSpy delay input
+    rspyDelayInput.FocusLost:Connect(function()
+        local value = tonumber(rspyDelayInput.Text)
+        if value and value > 0 then
+            settings.rspyUpdateDelay = value
+        else
+            rspyDelayInput.Text = tostring(settings.rspyUpdateDelay)
+        end
+    end)
+    
+    -- Update target
     local function updateTarget()
         if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
             return
@@ -11994,7 +12315,6 @@ local function main()
         
         local nearestTarget = findNearestTarget()
         
-        -- Check if current target died
         if currentTarget and currentTarget.Character then
             local humanoid = currentTarget.Character:FindFirstChild("Humanoid")
             if not humanoid or humanoid.Health <= 0 then
@@ -12006,7 +12326,6 @@ local function main()
             end
         end
         
-        -- Remove highlight if target changed
         if currentTarget ~= nearestTarget then
             if currentHighlight then
                 currentHighlight:Destroy()
@@ -12016,7 +12335,6 @@ local function main()
         
         currentTarget = nearestTarget
         
-        -- Update button text and highlight
         if currentTarget then
             local displayName = currentTarget.Name
             
@@ -12033,7 +12351,6 @@ local function main()
             
             button.Text = displayName
             
-            -- Create highlight if enabled
             if settings.showHighlight and currentTarget.Character then
                 local existingHighlight = currentTarget.Character:FindFirstChild("TargetHighlight")
                 if not existingHighlight then
@@ -12056,30 +12373,65 @@ local function main()
     button.MouseButton1Click:Connect(function()
         if currentTarget then
             fireTargetRemote(currentTarget)
+            
+            -- Play block animation if enabled
+            if settings.doBlockAnimation then
+                playBlockAnimation()
+            end
         end
     end)
     
     -- Main update loop
+    local lastCheck = 0
+    local lastAnimUpdate = 0
+    
     RunService.Heartbeat:Connect(function()
         local currentTime = tick()
         
-        updateTarget()
+        -- Update animation cache every 2 seconds
+        if currentTime - lastAnimUpdate >= 2 then
+            updateCachedAnimation()
+            lastAnimUpdate = currentTime
+        end
         
-        -- Weapon system checks
-        if settings.weaponOutEnabled then
-            local checkInterval = settings.weaponV2Enabled and 0.05 or 0.1
-            
-            if currentTime - lastWeaponCheck >= checkInterval then
-                local shouldEquip = checkWeaponSystem()
+        -- Check animation stop conditions
+        if settings.doBlockAnimation and currentAnimationTrack and currentAnimationTrack.IsPlaying then
+            checkAnimationStopConditions(currentTarget)
+        end
+        
+        -- Main checks based on speed settings
+        local checkInterval = settings.extremeFast and 0.01 or settings.checkSpeed
+        
+        if currentTime - lastCheck >= checkInterval then
+            if not settings.extremeFast then
+                updateTarget()
+            else
+                -- Extreme fast mode - skip some checks
+                local nearestTarget = findNearestTarget()
+                if nearestTarget ~= currentTarget then
+                    if currentHighlight then
+                        currentHighlight:Destroy()
+                        currentHighlight = nil
+                    end
+                    currentTarget = nearestTarget
+                end
                 
+                if currentTarget then
+                    button.Text = currentTarget.Name
+                else
+                    button.Text = "No Target"
+                end
+            end
+            
+            -- Weapon system
+            if settings.weaponOutEnabled then
+                local shouldEquip = checkWeaponSystem()
                 if shouldEquip then
-                    -- Enemy detected with weapon/parry, equip weapon
                     equipWeapon()
                 end
-                -- If shouldEquip is false, we don't do anything (let player manually unequip)
-                
-                lastWeaponCheck = currentTime
             end
+            
+            lastCheck = currentTime
         end
     end)
     
@@ -12091,11 +12443,12 @@ local function main()
         end
         
         currentTarget = nil
+        stopBlockAnimation()
         
         LocalPlayer.Character:WaitForChild("HumanoidRootPart")
     end)
     
-    -- Clean up on player leaving
+    -- Clean up
     Players.PlayerRemoving:Connect(function(player)
         if currentTarget == player then
             if currentHighlight then
@@ -12480,8 +12833,18 @@ local settings = {
     fixedDelay = 0.1,
     minDelay = 0.05,
     maxDelay = 0.2,
-    useRandomDelay = false
+    useRandomDelay = false,
+    guiLocked = false,
+    rspyEnabled = false,
+    rspyUpdateDelay = 12
 }
+
+-- RSpy System Variables
+local currentRemotePath = "k\239\188\151l\239\188\148ZO\227\129\158wat\227\129\155\227\129\134\227\129\160"
+local spiedRemotePath = nil
+local originalNamecall = nil
+local configFolder = "AutoBlockConfig"
+local configFile = "remote_config.txt"
 
 -- Track active loops to stop them when needed
 local activeLoops = {
@@ -12489,8 +12852,93 @@ local activeLoops = {
     random = nil
 }
 
+-- File system functions
+local function saveRemoteToConfig(remotePath)
+    if not isfolder then return end
+    if not writefile then return end
+    
+    if not isfolder(configFolder) then
+        makefolder(configFolder)
+    end
+    
+    writefile(configFolder .. "/" .. configFile, remotePath)
+end
+
+local function loadRemoteFromConfig()
+    if not isfile then return nil end
+    if not readfile then return nil end
+    
+    if isfile(configFolder .. "/" .. configFile) then
+        return readfile(configFolder .. "/" .. configFile)
+    end
+    
+    return nil
+end
+
+-- RSpy System
+local function setupRSpy()
+    if originalNamecall then return end
+    
+    local hookfunction = hookfunction
+    local getnamecallmethod = getnamecallmethod
+    
+    if not hookfunction or not getnamecallmethod then
+        warn("Executor doesn't support required functions - RSpy disabled")
+        return
+    end
+    
+    originalNamecall = hookfunction(getrawmetatable(game).__namecall, function(...)
+        local method = getnamecallmethod()
+        local self = ...
+        local args = {...}
+        
+        if method == "FireServer" and typeof(self) == "Instance" then
+            -- Check if this matches our block pattern
+            if #args >= 3 then
+                local arg1 = args[2]
+                local arg2 = args[3]
+                local arg3 = args[4]
+                
+                -- Pattern: String with "BLOCK", Tool/Part, Boolean
+                if typeof(arg1) == "string" and 
+                   (typeof(arg2) == "Instance") and 
+                   typeof(arg3) == "boolean" and
+                   arg1:find("BLOCK") then
+                    
+                    -- Found potential remote
+                    local remoteName = self.Name
+                    if remoteName ~= spiedRemotePath then
+                        spiedRemotePath = remoteName
+                        currentRemotePath = remoteName
+                        saveRemoteToConfig(remoteName)
+                        print("[RSpy] New block remote detected:", remoteName)
+                    end
+                end
+            end
+        end
+        
+        return originalNamecall(...)
+    end)
+end
+
+local function destroyRSpy()
+    if originalNamecall then
+        hookfunction(getrawmetatable(game).__namecall, originalNamecall)
+        originalNamecall = nil
+    end
+end
+
+-- Initialize remote from config
+local function initializeRemote()
+    local savedRemote = loadRemoteFromConfig()
+    if savedRemote and savedRemote ~= "" then
+        currentRemotePath = savedRemote
+        print("[Config] Loaded remote:", savedRemote)
+    end
+end
+
 -- Function to make a frame draggable
-local function makeDraggable(frame)
+local function makeDraggable(frame, excludeElements)
     local dragging = false
     local dragInput, dragStart, startPos
     
@@ -12500,7 +12948,21 @@ local function makeDraggable(frame)
     end
     
     frame.InputBegan:Connect(function(input)
+        if settings.guiLocked then return end
+        
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            local mousePos = input.Position
+            
+            -- Check if clicking on excluded elements
+            for _, element in pairs(excludeElements or {}) do
+                local absPos = element.AbsolutePosition
+                local absSize = element.AbsoluteSize
+                if mousePos.X >= absPos.X and mousePos.X <= absPos.X + absSize.X and
+                   mousePos.Y >= absPos.Y and mousePos.Y <= absPos.Y + absSize.Y then
+                    return
+                end
+            end
+            
             dragging = true
             dragStart = input.Position
             startPos = frame.Position
@@ -12520,10 +12982,50 @@ local function makeDraggable(frame)
     end)
     
     userInputService.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
+        if input == dragInput and dragging and not settings.guiLocked then
             updateInput(input)
         end
     end)
+end
+
+-- Make settings panel draggable
+local function makeSettingsDraggable(panel)
+    local dragging = false
+    local dragInput, dragStart, startPos
+    
+    local function updateInput(input)
+        local delta = input.Position - dragStart
+        panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+    
+    local title = panel:FindFirstChild("TextLabel")
+    if title then
+        title.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                dragStart = input.Position
+                startPos = panel.Position
+                
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        dragging = false
+                    end
+                end)
+            end
+        end)
+        
+        title.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                dragInput = input
+            end
+        end)
+        
+        userInputService.InputChanged:Connect(function(input)
+            if input == dragInput and dragging then
+                updateInput(input)
+            end
+        end)
+    end
 end
 
 -- Function to stop all active loops
@@ -12541,10 +13043,8 @@ end
 
 -- Function to run the fixed delay loop
 local function runFixedDelayLoop()
-    -- Stop any existing loops first
     stopAllLoops()
     
-    -- Create new loop with spawn
     local thread = coroutine.create(function()
         while settings.running and settings.useRandomDelay == false do
             local character = player.Character
@@ -12555,39 +13055,40 @@ local function runFixedDelayLoop()
                     [2] = character:FindFirstChild("<TN~!1>"),
                     [3] = true
                 }
-                replicatedStorage:WaitForChild("k\239\188\151l\239\188\148ZO\227\129\158wat\227\129\155\227\129\134\227\129\160"):FireServer(unpack(args))
+                
+                local remoteEvent = replicatedStorage:FindFirstChild(currentRemotePath)
+                if remoteEvent then
+                    remoteEvent:FireServer(unpack(args))
+                end
                 
                 wait(settings.fixedDelay)
                 
                 -- Unblock
                 args[3] = false
-                replicatedStorage:WaitForChild("k\239\188\151l\239\188\148ZO\227\129\158wat\227\129\155\227\129\134\227\129\160"):FireServer(unpack(args))
+                if remoteEvent then
+                    remoteEvent:FireServer(unpack(args))
+                end
             end
             
-            -- Only wait if character doesn't exist
             if not player.Character or not player.Character:FindFirstChild("<TN~!1>") then
                 wait(0.001)
             end
         end
     end)
     
-    -- Store the thread in activeLoops
     activeLoops.fixed = {
         Disconnect = function()
             coroutine.close(thread)
         end
     }
     
-    -- Start the thread
     coroutine.resume(thread)
 end
 
 -- Function to run the random delay loop
 local function runRandomDelayLoop()
-    -- Stop any existing loops first
     stopAllLoops()
     
-    -- Create new loop with spawn
     local thread = coroutine.create(function()
         while settings.running and settings.useRandomDelay == true do
             local character = player.Character
@@ -12598,32 +13099,34 @@ local function runRandomDelayLoop()
                     [2] = character:FindFirstChild("<TN~!1>"),
                     [3] = true
                 }
-                replicatedStorage:WaitForChild("k\239\188\151l\239\188\148ZO\227\129\158wat\227\129\155\227\129\134\227\129\160"):FireServer(unpack(args))
                 
-                -- Calculate random delay
+                local remoteEvent = replicatedStorage:FindFirstChild(currentRemotePath)
+                if remoteEvent then
+                    remoteEvent:FireServer(unpack(args))
+                end
+                
                 local randomDelay = math.random() * (settings.maxDelay - settings.minDelay) + settings.minDelay
                 wait(randomDelay)
                 
                 -- Unblock
                 args[3] = false
-                replicatedStorage:WaitForChild("k\239\188\151l\239\188\148ZO\227\129\158wat\227\129\155\227\129\134\227\129\160"):FireServer(unpack(args))
+                if remoteEvent then
+                    remoteEvent:FireServer(unpack(args))
+                end
             end
             
-            -- Only wait if character doesn't exist
             if not player.Character or not player.Character:FindFirstChild("<TN~!1>") then
                 wait(0.001)
             end
         end
     end)
     
-    -- Store the thread in activeLoops
     activeLoops.random = {
         Disconnect = function()
             coroutine.close(thread)
         end
     }
     
-    -- Start the thread
     coroutine.resume(thread)
 end
 
@@ -12647,7 +13150,7 @@ local function createGui()
     screenGui.ResetOnSpawn = false
     screenGui.Parent = player.PlayerGui
     
-    -- Main frame - ultra compact
+    -- Main frame
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(0, 240, 0, 80)
     frame.Position = UDim2.new(0.8, -120, 0.1, 0)
@@ -12657,13 +13160,40 @@ local function createGui()
     frame.BorderColor3 = Color3.fromRGB(60, 60, 60)
     frame.Parent = screenGui
     
-    -- Add corner radius
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 4)
     corner.Parent = frame
     
-    -- Make frame draggable
-    makeDraggable(frame)
+    -- Lock Toggle Button (Top Right)
+    local lockToggle = Instance.new("TextButton")
+    lockToggle.Name = "LockToggle"
+    lockToggle.Size = UDim2.new(0, 12, 0, 12)
+    lockToggle.Position = UDim2.new(1, -35, 0, 3)
+    lockToggle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    lockToggle.BackgroundTransparency = 0.5
+    lockToggle.BorderSizePixel = 0
+    lockToggle.Text = ""
+    lockToggle.Parent = frame
+    
+    local lockCorner = Instance.new("UICorner")
+    lockCorner.CornerRadius = UDim.new(1, 0)
+    lockCorner.Parent = lockToggle
+    
+    -- Settings Toggle Button
+    local settingsToggle = Instance.new("TextButton")
+    settingsToggle.Name = "SettingsToggle"
+    settingsToggle.Size = UDim2.new(0, 18, 0, 18)
+    settingsToggle.Position = UDim2.new(1, -18, 0, 0)
+    settingsToggle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    settingsToggle.BackgroundTransparency = 0.5
+    settingsToggle.BorderSizePixel = 0
+    settingsToggle.Text = "⚙️"
+    settingsToggle.TextSize = 12
+    settingsToggle.Parent = frame
+    
+    local settingsCorner = Instance.new("UICorner")
+    settingsCorner.CornerRadius = UDim.new(0, 4)
+    settingsCorner.Parent = settingsToggle
     
     -- Title
     local title = Instance.new("TextLabel")
@@ -12677,12 +13207,11 @@ local function createGui()
     title.Font = Enum.Font.GothamBold
     title.Parent = frame
     
-    -- Add corner radius to title
     local titleCorner = Instance.new("UICorner")
     titleCorner.CornerRadius = UDim.new(0, 4)
     titleCorner.Parent = title
     
-    -- Toggle button - slightly larger
+    -- Toggle button
     local toggleButton = Instance.new("TextButton")
     toggleButton.Size = UDim2.new(0, 60, 0, 28)
     toggleButton.Position = UDim2.new(0.05, 0, 0.35, 0)
@@ -12694,12 +13223,11 @@ local function createGui()
     toggleButton.Font = Enum.Font.GothamBold
     toggleButton.Parent = frame
     
-    -- Add corner radius to toggle button
     local toggleCorner = Instance.new("UICorner")
     toggleCorner.CornerRadius = UDim.new(0, 4)
     toggleCorner.Parent = toggleButton
     
-    -- Fixed delay section - more compact
+    -- Fixed delay section
     local fixedDelayLabel = Instance.new("TextLabel")
     fixedDelayLabel.Size = UDim2.new(0, 35, 0, 16)
     fixedDelayLabel.Position = UDim2.new(0.33, 0, 0.3, 0)
@@ -12723,12 +13251,11 @@ local function createGui()
     fixedDelayInput.Font = Enum.Font.Gotham
     fixedDelayInput.Parent = frame
     
-    -- Add corner radius to fixed delay input
     local fixedInputCorner = Instance.new("UICorner")
     fixedInputCorner.CornerRadius = UDim.new(0, 4)
     fixedInputCorner.Parent = fixedDelayInput
     
-    -- Random toggle - more compact
+    -- Random toggle
     local randomToggle = Instance.new("TextButton")
     randomToggle.Size = UDim2.new(0, 16, 0, 16)
     randomToggle.Position = UDim2.new(0.5, 0, 0.3, 0)
@@ -12737,7 +13264,6 @@ local function createGui()
     randomToggle.BorderSizePixel = 0
     randomToggle.Parent = frame
     
-    -- Add corner radius to random toggle
     local randomToggleCorner = Instance.new("UICorner")
     randomToggleCorner.CornerRadius = UDim.new(0, 3)
     randomToggleCorner.Parent = randomToggle
@@ -12754,7 +13280,7 @@ local function createGui()
     randomLabel.TextXAlignment = Enum.TextXAlignment.Left
     randomLabel.Parent = frame
     
-    -- Min/Max inputs - more compact
+    -- Min/Max inputs
     local minDelayLabel = Instance.new("TextLabel")
     minDelayLabel.Size = UDim2.new(0, 25, 0, 16)
     minDelayLabel.Position = UDim2.new(0.5, 0, 0.55, 0)
@@ -12778,7 +13304,6 @@ local function createGui()
     minDelayInput.Font = Enum.Font.Gotham
     minDelayInput.Parent = frame
     
-    -- Add corner radius to min delay input
     local minInputCorner = Instance.new("UICorner")
     minInputCorner.CornerRadius = UDim.new(0, 4)
     minInputCorner.Parent = minDelayInput
@@ -12806,7 +13331,6 @@ local function createGui()
     maxDelayInput.Font = Enum.Font.Gotham
     maxDelayInput.Parent = frame
     
-    -- Add corner radius to max delay input
     local maxInputCorner = Instance.new("UICorner")
     maxInputCorner.CornerRadius = UDim.new(0, 4)
     maxInputCorner.Parent = maxDelayInput
@@ -12819,10 +13343,155 @@ local function createGui()
     statusIndicator.BorderSizePixel = 0
     statusIndicator.Parent = frame
     
-    -- Make status indicator round
     local statusCorner = Instance.new("UICorner")
     statusCorner.CornerRadius = UDim.new(1, 0)
     statusCorner.Parent = statusIndicator
+    
+    -- Settings Panel
+    local settingsPanel = Instance.new("Frame")
+    settingsPanel.Name = "SettingsPanel"
+    settingsPanel.Size = UDim2.new(0, 250, 0, 150)
+    settingsPanel.Position = UDim2.new(0.5, -125, 0.3, 0)
+    settingsPanel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    settingsPanel.BackgroundTransparency = 0.3
+    settingsPanel.BorderSizePixel = 2
+    settingsPanel.BorderColor3 = Color3.fromRGB(60, 60, 60)
+    settingsPanel.Visible = false
+    settingsPanel.Parent = screenGui
+    
+    local panelCorner = Instance.new("UICorner")
+    panelCorner.CornerRadius = UDim.new(0, 8)
+    panelCorner.Parent = settingsPanel
+    
+    -- Panel Title
+    local panelTitle = Instance.new("TextLabel")
+    panelTitle.Size = UDim2.new(1, 0, 0, 30)
+    panelTitle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    panelTitle.BackgroundTransparency = 0.3
+    panelTitle.Text = "Settings"
+    panelTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    panelTitle.Font = Enum.Font.GothamBold
+    panelTitle.TextSize = 16
+    panelTitle.Parent = settingsPanel
+    
+    local titlePanelCorner = Instance.new("UICorner")
+    titlePanelCorner.CornerRadius = UDim.new(0, 8)
+    titlePanelCorner.Parent = panelTitle
+    
+    -- Scrolling Frame
+    local scrollFrame = Instance.new("ScrollingFrame")
+    scrollFrame.Size = UDim2.new(1, -10, 1, -40)
+    scrollFrame.Position = UDim2.new(0, 5, 0, 35)
+    scrollFrame.BackgroundTransparency = 1
+    scrollFrame.BorderSizePixel = 0
+    scrollFrame.ScrollBarThickness = 6
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 150)
+    scrollFrame.Parent = settingsPanel
+    
+    local function createLabel(text, yPos)
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, -10, 0, 20)
+        label.Position = UDim2.new(0, 5, 0, yPos)
+        label.BackgroundTransparency = 1
+        label.Text = text
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.Font = Enum.Font.Gotham
+        label.TextSize = 13
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = scrollFrame
+        return label
+    end
+    
+    local function createToggle(name, yPos, defaultValue)
+        local toggle = Instance.new("TextButton")
+        toggle.Name = name
+        toggle.Size = UDim2.new(0, 40, 0, 20)
+        toggle.Position = UDim2.new(1, -45, 0, yPos)
+        toggle.BackgroundColor3 = defaultValue and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
+        toggle.BorderSizePixel = 0
+        toggle.Text = defaultValue and "ON" or "OFF"
+        toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+        toggle.Font = Enum.Font.GothamBold
+        toggle.TextSize = 11
+        toggle.Parent = scrollFrame
+        
+        local toggleCorner = Instance.new("UICorner")
+        toggleCorner.CornerRadius = UDim.new(0, 4)
+        toggleCorner.Parent = toggle
+        
+        return toggle
+    end
+    
+    local function createTextBox(name, yPos, defaultValue)
+        local textBox = Instance.new("TextBox")
+        textBox.Name = name
+        textBox.Size = UDim2.new(0, 60, 0, 22)
+        textBox.Position = UDim2.new(1, -65, 0, yPos)
+        textBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        textBox.BackgroundTransparency = 0.3
+        textBox.BorderSizePixel = 1
+        textBox.BorderColor3 = Color3.fromRGB(80, 80, 80)
+        textBox.Text = tostring(defaultValue)
+        textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+        textBox.Font = Enum.Font.Gotham
+        textBox.TextSize = 12
+        textBox.Parent = scrollFrame
+        
+        local boxCorner = Instance.new("UICorner")
+        boxCorner.CornerRadius = UDim.new(0, 4)
+        boxCorner.Parent = textBox
+        
+        return textBox
+    end
+    
+    -- Create settings elements
+    local yOffset = 10
+    
+    createLabel("RSpy Method:", yOffset)
+    local rspyToggle = createToggle("RSpyToggle", yOffset, settings.rspyEnabled)
+    yOffset = yOffset + 30
+    
+    createLabel("RSpy Update Delay (sec):", yOffset)
+    local rspyDelayInput = createTextBox("RSpyDelayInput", yOffset, settings.rspyUpdateDelay)
+    yOffset = yOffset + 30
+    
+    -- Make frame draggable (exclude interactive elements)
+    makeDraggable(frame, {toggleButton, fixedDelayInput, randomToggle, minDelayInput, maxDelayInput, lockToggle, settingsToggle})
+    makeSettingsDraggable(settingsPanel)
+    
+    -- Lock toggle functionality
+    lockToggle.MouseButton1Click:Connect(function()
+        settings.guiLocked = not settings.guiLocked
+        lockToggle.BackgroundColor3 = settings.guiLocked and Color3.fromRGB(100, 30, 30) or Color3.fromRGB(30, 30, 30)
+    end)
+    
+    -- Settings toggle functionality
+    settingsToggle.MouseButton1Click:Connect(function()
+        settingsPanel.Visible = not settingsPanel.Visible
+    end)
+    
+    -- RSpy toggle
+    rspyToggle.MouseButton1Click:Connect(function()
+        settings.rspyEnabled = not settings.rspyEnabled
+        rspyToggle.Text = settings.rspyEnabled and "ON" or "OFF"
+        rspyToggle.BackgroundColor3 = settings.rspyEnabled and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
+        
+        if settings.rspyEnabled then
+            setupRSpy()
+        else
+            destroyRSpy()
+        end
+    end)
+    
+    -- RSpy delay input
+    rspyDelayInput.FocusLost:Connect(function()
+        local value = tonumber(rspyDelayInput.Text)
+        if value and value > 0 then
+            settings.rspyUpdateDelay = value
+        else
+            rspyDelayInput.Text = tostring(settings.rspyUpdateDelay)
+        end
+    end)
     
     -- Toggle button click
     toggleButton.MouseButton1Click:Connect(function()
@@ -12842,17 +13511,14 @@ local function createGui()
     randomToggle.MouseButton1Click:Connect(function()
         local wasRunning = settings.running
         
-        -- If it was running, temporarily stop it
         if wasRunning then
             settings.running = false
             stopAllLoops()
         end
         
-        -- Toggle the mode
         settings.useRandomDelay = not settings.useRandomDelay
         randomToggle.BackgroundColor3 = settings.useRandomDelay and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
         
-        -- If it was running, restart with the new mode
         if wasRunning then
             settings.running = true
             startBlockLoop()
@@ -12907,21 +13573,19 @@ end
 
 -- Handle character respawning
 player.CharacterAdded:Connect(function()
-    -- Stop any existing loops
     stopAllLoops()
     
-    -- Recreate GUI to ensure it's properly attached to the new character
     if not player.PlayerGui:FindFirstChild("AutoBlockGUI") then
         createGui()
     end
     
-    -- Restart the loop if it was running
     if settings.running then
         startBlockLoop()
     end
 end)
 
--- Create initial GUI
+-- Initialize and create GUI
+initializeRemote()
 createGui()
 ]]
 
@@ -18816,6 +19480,58 @@ end)
 
 addcmd('RemovePrompts',{'Noprompt'},function(args, speaker)
 game:GetService("CoreGui").PurchasePromptApp:Destroy()
+end)
+
+addcmd('Friendspy',{'tellfriends'},function(args, speaker)
+local Players = game:GetService("Players")
+
+local function buildFriendshipList()
+    local friendshipList = {}
+    local playerList = Players:GetPlayers()
+
+    for i = 1, #playerList do
+        local p1 = playerList[i]
+        friendshipList[p1.Name] = {}
+
+        for j = 1, #playerList do
+            if i ~= j then
+                local p2 = playerList[j]
+                local success, isFriend = pcall(function()
+                    return p1:IsFriendsWith(p2.UserId)
+                end)
+                if success and isFriend then
+                    table.insert(friendshipList[p1.Name], p2.Name)
+                end
+            end
+        end
+    end
+
+    return friendshipList
+end
+
+local function printFriendships()
+    local list = buildFriendshipList()
+    print("Friendship list:")
+    for player, friends in pairs(list) do
+        if #friends > 0 then
+            print(player .. " is friends with: " .. table.concat(friends, ", "))
+        else
+            print(player .. " has no friends in the server.")
+        end
+    end
+end
+
+task.wait(2)
+printFriendships()
+end)
+
+addcmd('print',{},function(args, speaker)
+    local txt = table.concat(args, " ")
+    if txt and txt ~= "" then
+        print(txt)
+    else
+        print("Error: Please provide text to print")
+    end
 end)
 
 addcmd('Evade',{'evade GUI'},function(args, speaker)
