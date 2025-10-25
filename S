@@ -19540,8 +19540,8 @@ addcmd('print',{},function(args, speaker)
 end)
 
 addcmd('AuraCraft',{},function(args, speaker)
--- Aura Craft GUI V2 - Orion Library Version
--- Mobile Optimized | Enhanced Version
+-- Aura Craft GUI V3.1 - Orion Library Version
+-- Mobile Optimized | Fixed Dropdown & Random Equip Issues
 -- Real-time player tracking with optimized updates
 
 local OrionLib = loadstring(game:HttpGet(("https://raw.githubusercontent.com/Giangplay/Script/main/Orion_Library_PE_V2.lua")))()
@@ -19564,7 +19564,156 @@ local isAddingAuras = false
 local targetAuraCount = 0
 local showJoinNotifications = true
 local showLeaveNotifications = true
+local showEquipNotifications = true
+local showAuraAddedNotifications = true
 local lastPlayerCount = #Players:GetPlayers()
+
+-- Aura Selector Variables
+local auraList = {}
+local auraCache = {}
+local selectedAuraFromDropdown = ""
+local searchQuery = ""
+local filteredAuraList = {}
+local randomEquipEnabled = false
+local randomEquipDelay = 0.5
+local autoUpdateTxt = false
+local auraDropdown = nil
+local lastDropdownUpdate = 0
+local dropdownUpdateCooldown = 1
+
+-- File System Variables
+local folderName = "auracraft"
+local fileName = "auras.txt"
+
+-- Default Aura List
+local defaultAuras = {
+    "supreme", "hidden", "spy", "super mega energy balls", "energy balls", "ko", "sleep", 
+    "water", "earth", "storm", "crown", "cosmic", "rainbow", "lava", "???", "hax", 
+    "jackpot", "gold", "super", "black hole", "superhero", "diamond", "star", "waterfall", 
+    "challenge", "firefly", "butterfly", "god", "moon", "sky", "alien", "rocket", "death", 
+    "life", "time", "darkness", "supernatural", "vip", "void", "yin yang", "monk", 
+    "eclipse", "werewolf", "mystery", "sinister", "tornado", "eruption", "metal", "fairy", 
+    "infinite", "future", "galaxy", "glacier", "planet", "itadori", "vibrance", "phoenix", 
+    "multiverse", "cycle", "wraith", "ninja", "quartz", "bat", "zenith", "devil", "demon", 
+    "angel", "snow", "sand", "sandstorm", "alone", "rain", "chained", "treasure", 
+    "hypnotic", "ufo", "spirit", "ocean", "tsunami", "speed", "phonk", "eternal", 
+    "sunshine", "hellbent", "eternal flame", "raven", "toxic", "tacos", "undefined", 
+    "rhythm", "flex", "big head", "chaos", "wildfire", "power", "rose", "science", 
+    "wonder", "the only", "plant", "earthquake", "amber", "mermaid", "plasma", "glass", 
+    "buddha", "dragon", "aurora borealis", "supervillain", "sad", "aquatic", "necromancer", 
+    "wind", "dubstep", "nature", "luck", "meteor", "dream", "nightmare", "medusa", 
+    "vision", "sorcerer", "frostbite", "awesome", "giga", "gojo", "bonfire", "swamp", 
+    "energy", "divine", "cloud", "cryogen", "magnetic", "annihilation", "harmony", 
+    "floral", "north star", "nebula", "air", "robot", "heaven", "dark matter", "plague", 
+    "gravity", "shimmer", "techtronic", "knight", "vortex", "boss", "dark angel", 
+    "cute", "constellation", "solstice", "blackout", "blizzard", "calm", "unity", 
+    "spout", "reflect", "pirate", "corrupt", "drip", "genius", "specter", "abundance", 
+    "mirage", "noob", "insane", "mlg", "deception", "poseidon", "rng", "royalty", 
+    "crab", "gem", "alpha", "joy", "heal", "courage", "ares", "infinite vortex", 
+    "euphoria", "doom", "superb", "supernova"
+}
+
+-- File System Functions
+local function ensureFolderExists()
+    if not isfolder(folderName) then
+        makefolder(folderName)
+    end
+end
+
+local function loadAurasFromFile()
+    ensureFolderExists()
+    local filePath = folderName .. "/" .. fileName
+    
+    if isfile(filePath) then
+        local content = readfile(filePath)
+        local loadedAuras = {}
+        for line in content:gmatch("[^\r\n]+") do
+            if line and line ~= "" then
+                table.insert(loadedAuras, line)
+            end
+        end
+        if #loadedAuras > 0 then
+            return loadedAuras
+        end
+    end
+    
+    -- If file doesn't exist or is empty, use default list
+    return defaultAuras
+end
+
+local function saveAurasToFile()
+    ensureFolderExists()
+    local filePath = folderName .. "/" .. fileName
+    local content = table.concat(auraList, "\n")
+    writefile(filePath, content)
+end
+
+local function addAuraToList(auraName)
+    if not auraName or auraName == "" then return false end
+    
+    local lowerAuraName = string.lower(auraName)
+    
+    -- Check if aura already exists (case-insensitive)
+    for _, existingAura in pairs(auraList) do
+        if string.lower(existingAura) == lowerAuraName then
+            return false -- Already exists
+        end
+    end
+    
+    -- Check cache
+    if auraCache[lowerAuraName] then
+        return false
+    end
+    
+    -- Add to list and cache
+    table.insert(auraList, auraName)
+    auraCache[lowerAuraName] = true
+    saveAurasToFile()
+    return true
+end
+
+-- Initialize aura list
+auraList = loadAurasFromFile()
+for _, aura in pairs(auraList) do
+    auraCache[string.lower(aura)] = true
+end
+
+-- Filter auras based on search query
+local function filterAuras()
+    if searchQuery == "" or searchQuery == nil then
+        filteredAuraList = {}
+        for _, aura in pairs(auraList) do
+            table.insert(filteredAuraList, aura)
+        end
+    else
+        filteredAuraList = {}
+        local lowerQuery = string.lower(searchQuery)
+        for _, aura in pairs(auraList) do
+            if string.find(string.lower(aura), lowerQuery, 1, true) then
+                table.insert(filteredAuraList, aura)
+            end
+        end
+    end
+    return filteredAuraList
+end
+
+-- Safe dropdown refresh with cooldown
+local function safeRefreshDropdown()
+    local currentTime = tick()
+    if currentTime - lastDropdownUpdate < dropdownUpdateCooldown then
+        return
+    end
+    lastDropdownUpdate = currentTime
+    
+    if auraDropdown then
+        pcall(function()
+            local filtered = filterAuras()
+            if #filtered > 0 then
+                auraDropdown:Refresh(filtered, true)
+            end
+        end)
+    end
+end
 
 -- Window Creation
 local Window = OrionLib:MakeWindow({
@@ -19583,8 +19732,187 @@ local MainTab = Window:MakeTab({
     PremiumOnly = false
 })
 
+-- LocalPlayer Stats Section
+local PlayerStatsSection = MainTab:AddSection({
+    Name = "Your Stats"
+})
+
+-- LocalPlayer Aura Label
+local localPlayerAuraLabel = MainTab:AddLabel("Your Aura: None")
+
+-- LocalPlayer Cash Label
+local localPlayerCashLabel = MainTab:AddLabel("Your Cash: 0")
+
+-- Update LocalPlayer Stats
+spawn(function()
+    while wait(0.5) do
+        pcall(function()
+            -- Update LocalPlayer Aura
+            local aura = LocalPlayer:FindFirstChild("Aura")
+            if aura and aura.Value then
+                localPlayerAuraLabel:Set("Your Aura: " .. tostring(aura.Value))
+            else
+                localPlayerAuraLabel:Set("Your Aura: None")
+            end
+            
+            -- Update LocalPlayer Cash
+            local coinsFolder = LocalPlayer:FindFirstChild("CoinsFolder")
+            if coinsFolder then
+                local cash = coinsFolder:FindFirstChild("Cash")
+                if cash and cash.Value then
+                    localPlayerCashLabel:Set("Your Cash: " .. tostring(cash.Value))
+                else
+                    localPlayerCashLabel:Set("Your Cash: 0")
+                end
+            else
+                localPlayerCashLabel:Set("Your Cash: 0")
+            end
+        end)
+    end
+end)
+
 local MainSection = MainTab:AddSection({
     Name = "Aura Management"
+})
+
+-- Aura Selector Dropdown
+auraDropdown = MainTab:AddDropdown({
+    Name = "Select Aura",
+    Default = "",
+    Options = filterAuras(),
+    Callback = function(Value)
+        selectedAuraFromDropdown = Value
+    end
+})
+
+-- Search Textbox
+MainTab:AddTextbox({
+    Name = "Search Auras",
+    Default = "",
+    TextDisappear = false,
+    Placeholder = "Type to search...",
+    Callback = function(Value)
+        searchQuery = Value
+        safeRefreshDropdown()
+    end
+})
+
+-- Equip Selected Aura Button
+MainTab:AddButton({
+    Name = "💎 Equip Selected Aura",
+    Callback = function()
+        if selectedAuraFromDropdown ~= "" and selectedAuraFromDropdown ~= "None" then
+            local args = {
+                [1] = selectedAuraFromDropdown,
+                [2] = "1"
+            }
+            pcall(function()
+                ReplicatedStorage.Remotes.Equip_AURA:FireServer(unpack(args))
+            end)
+            if showEquipNotifications then
+                OrionLib:MakeNotification({
+                    Name = "Aura Equipped",
+                    Content = "Equipped: " .. selectedAuraFromDropdown,
+                    Image = "rbxassetid://4483345998",
+                    Time = 3
+                })
+            end
+        else
+            OrionLib:MakeNotification({
+                Name = "Error",
+                Content = "Please select an aura from dropdown!",
+                Image = "rbxassetid://4483345998",
+                Time = 3
+            })
+        end
+    end
+})
+
+-- Random Equip Section
+local RandomSection = MainTab:AddSection({
+    Name = "Random Equip"
+})
+
+-- Random Equip Toggle
+MainTab:AddToggle({
+    Name = "Randomly Keep Equipping Aura",
+    Default = false,
+    Callback = function(Value)
+        randomEquipEnabled = Value
+        if Value then
+            OrionLib:MakeNotification({
+                Name = "Random Equip",
+                Content = "Random equip enabled!",
+                Image = "rbxassetid://4483345998",
+                Time = 2
+            })
+            spawn(function()
+                while randomEquipEnabled do
+                    pcall(function()
+                        if #auraList > 0 then
+                            local randomIndex = math.random(1, #auraList)
+                            local randomAura = auraList[randomIndex]
+                            if randomAura and randomAura ~= "" then
+                                local args = {
+                                    [1] = randomAura,
+                                    [2] = "1"
+                                }
+                                ReplicatedStorage.Remotes.Equip_AURA:FireServer(unpack(args))
+                                if showEquipNotifications then
+                                    OrionLib:MakeNotification({
+                                        Name = "Random Aura",
+                                        Content = "Equipped: " .. randomAura,
+                                        Image = "rbxassetid://4483345998",
+                                        Time = 1
+                                    })
+                                end
+                            end
+                        end
+                    end)
+                    wait(randomEquipDelay)
+                end
+            end)
+        else
+            OrionLib:MakeNotification({
+                Name = "Random Equip",
+                Content = "Random equip disabled!",
+                Image = "rbxassetid://4483345998",
+                Time = 2
+            })
+        end
+    end
+})
+
+-- Random Equip Delay
+MainTab:AddTextbox({
+    Name = "Random Equip Delay (seconds)",
+    Default = "0.5",
+    TextDisappear = false,
+    Placeholder = "0.5",
+    Callback = function(Value)
+        local num = tonumber(Value)
+        if num and num > 0 then
+            randomEquipDelay = num
+            OrionLib:MakeNotification({
+                Name = "Delay Updated",
+                Content = "Random delay set to " .. num .. " seconds",
+                Image = "rbxassetid://4483345998",
+                Time = 2
+            })
+        else
+            OrionLib:MakeNotification({
+                Name = "Error",
+                Content = "Please enter a valid number!",
+                Image = "rbxassetid://4483345998",
+                Time = 3
+            })
+        end
+    end
+})
+
+-- Manual Aura Input Section
+local ManualSection = MainTab:AddSection({
+    Name = "Manual Aura Input"
 })
 
 -- Aura Input
@@ -19601,7 +19929,7 @@ MainTab:AddTextbox({
 
 -- Equip Aura Button
 MainTab:AddButton({
-    Name = "💎 Equip Aura",
+    Name = "💎 Equip Typed Aura",
     Callback = function()
         if auraNameInput ~= "" then
             local args = {
@@ -19611,12 +19939,14 @@ MainTab:AddButton({
             pcall(function()
                 ReplicatedStorage.Remotes.Equip_AURA:FireServer(unpack(args))
             end)
-            OrionLib:MakeNotification({
-                Name = "Aura Equipped",
-                Content = "Attempting to equip: " .. auraNameInput,
-                Image = "rbxassetid://4483345998",
-                Time = 3
-            })
+            if showEquipNotifications then
+                OrionLib:MakeNotification({
+                    Name = "Aura Equipped",
+                    Content = "Attempting to equip: " .. auraNameInput,
+                    Image = "rbxassetid://4483345998",
+                    Time = 3
+                })
+            end
         else
             OrionLib:MakeNotification({
                 Name = "Error",
@@ -19810,6 +20140,60 @@ MainTab:AddToggle({
     end
 })
 
+-- Auto Update Txt Section
+local AutoUpdateSection = MainTab:AddSection({
+    Name = "Aura List Auto-Update"
+})
+
+-- Auto Update Toggle
+MainTab:AddToggle({
+    Name = "Update Txt from Players",
+    Default = false,
+    Callback = function(Value)
+        autoUpdateTxt = Value
+        if Value then
+            OrionLib:MakeNotification({
+                Name = "Auto-Update",
+                Content = "Auto-update txt enabled!",
+                Image = "rbxassetid://4483345998",
+                Time = 2
+            })
+            spawn(function()
+                while autoUpdateTxt do
+                    for _, player in pairs(Players:GetPlayers()) do
+                        pcall(function()
+                            local aura = player:FindFirstChild("Aura")
+                            if aura and aura.Value and aura.Value ~= "" then
+                                local added = addAuraToList(aura.Value)
+                                if added then
+                                    if showAuraAddedNotifications then
+                                        OrionLib:MakeNotification({
+                                            Name = "Aura Added",
+                                            Content = "Added " .. aura.Value .. " to config",
+                                            Image = "rbxassetid://4483345998",
+                                            Time = 2
+                                        })
+                                    end
+                                    -- Refresh dropdown with new aura
+                                    safeRefreshDropdown()
+                                end
+                            end
+                        end)
+                    end
+                    wait(0.1)
+                end
+            end)
+        else
+            OrionLib:MakeNotification({
+                Name = "Auto-Update",
+                Content = "Auto-update txt disabled!",
+                Image = "rbxassetid://4483345998",
+                Time = 2
+            })
+        end
+    end
+})
+
 -- Copy Tab
 local CopyTab = Window:MakeTab({
     Name = "Copy",
@@ -19868,12 +20252,14 @@ CopyTab:AddButton({
                         [2] = "1"
                     }
                     ReplicatedStorage.Remotes.Equip_AURA:FireServer(unpack(args))
-                    OrionLib:MakeNotification({
-                        Name = "Aura Copied",
-                        Content = "Equipped " .. targetAura.Value,
-                        Image = "rbxassetid://4483345998",
-                        Time = 3
-                    })
+                    if showEquipNotifications then
+                        OrionLib:MakeNotification({
+                            Name = "Aura Copied",
+                            Content = "Equipped " .. targetAura.Value,
+                            Image = "rbxassetid://4483345998",
+                            Time = 3
+                        })
+                    end
                 else
                     OrionLib:MakeNotification({
                         Name = "Error",
@@ -20140,6 +20526,36 @@ SettingsTab:AddToggle({
     end
 })
 
+-- Toggle for Equip Notifications
+SettingsTab:AddToggle({
+    Name = "Aura Equip Notifications",
+    Default = true,
+    Callback = function(Value)
+        showEquipNotifications = Value
+        OrionLib:MakeNotification({
+            Name = "Settings Updated",
+            Content = "Equip notifications " .. (Value and "enabled" or "disabled"),
+            Image = "rbxassetid://4483345998",
+            Time = 2
+        })
+    end
+})
+
+-- Toggle for Aura Added Notifications
+SettingsTab:AddToggle({
+    Name = "Aura Added to Config Notifications",
+    Default = true,
+    Callback = function(Value)
+        showAuraAddedNotifications = Value
+        OrionLib:MakeNotification({
+            Name = "Settings Updated",
+            Content = "Aura added notifications " .. (Value and "enabled" or "disabled"),
+            Image = "rbxassetid://4483345998",
+            Time = 2
+        })
+    end
+})
+
 local GUISettings = SettingsTab:AddSection({
     Name = "GUI Controls"
 })
@@ -20165,16 +20581,17 @@ local CreditsSection = SettingsTab:AddSection({
     Name = "Information"
 })
 
-SettingsTab:AddLabel("Aura Craft GUI V2")
+SettingsTab:AddLabel("Aura Craft GUI V3.1")
 SettingsTab:AddLabel("Mobile Optimized")
 SettingsTab:AddLabel("Enhanced Performance")
+SettingsTab:AddLabel("Total Auras Loaded: " .. #auraList)
 
 -- Initialize
 OrionLib:Init()
 
 OrionLib:MakeNotification({
     Name = "Aura Craft GUI Loaded",
-    Content = "GUI successfully loaded! Mobile optimized.",
+    Content = "GUI successfully loaded! " .. #auraList .. " auras available.",
     Image = "rbxassetid://4483345998",
     Time = 5
 })
