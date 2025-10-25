@@ -4364,6 +4364,10 @@ CMDs[#CMDs + 1] = {NAME = 'GameplayPaused / GamePause', DESC = 'No Gameplay Paus
 CMDs[#CMDs + 1] = {NAME = 'RemovePrompts / Noprompt', DESC = 'New method remove robux purchase GUIs'}
 CMDs[#CMDs + 1] = {NAME = 'Friendspy / tellfriends', DESC = 'Prints Who is Friend with Who in Console'}
 CMDs[#CMDs + 1] = {NAME = 'print [text]', DESC = 'Print any text to console'}
+CMDs[#CMDs + 1] = {NAME = 'AuraCraft', DESC = 'Aura craft game GUI'}
+CMDs[#CMDs + 1] = {NAME = 'ShiftlockGUI / Shiftlock', DESC = 'Shiftlock GUI'}
+CMDs[#CMDs + 1] = {NAME = 'wave', DESC = 'wave emote'}
+CMDs[#CMDs + 1] = {NAME = 'zoanim / zoanimgui', DESC = 'animation gui for zo'}
 CMDs[#CMDs + 1] = {NAME = 'Evade / Evade GUI', DESC = 'Evade script'}
 CMDs[#CMDs + 1] = {NAME = 'Zoweapon remover / weaponremover', DESC = 'Zo weapon remover GUI'}
 CMDs[#CMDs + 1] = {NAME = 'Zocontrolsset / zocontrols', DESC = 'Zo controls setting GUI'}
@@ -8429,7 +8433,7 @@ addcmd('fixcam',{'restorecam'},function(args, speaker)
 	speaker.Character.Head.Anchored = false
 end)
 
-addcmd('enableshiftlock',{'enablesl','shiftlock'},function(args, speaker)
+addcmd('enableshiftlock',{'enablesl'},function(args, speaker)
 	speaker.DevEnableMouseLock = true
 	notify('Shiftlock','Shift lock is now available')
 end)
@@ -19533,6 +19537,1005 @@ addcmd('print',{},function(args, speaker)
     else
         print("Error: Please provide text to print")
     end
+end)
+
+addcmd('AuraCraft',{},function(args, speaker)
+-- Aura Craft GUI V2 - Orion Library Version
+-- Mobile Optimized | Enhanced Version
+-- Real-time player tracking with optimized updates
+
+local OrionLib = loadstring(game:HttpGet(("https://raw.githubusercontent.com/Giangplay/Script/main/Orion_Library_PE_V2.lua")))()
+
+-- Services
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+-- Variables
+local LocalPlayer = Players.LocalPlayer
+local coinAmount = 199
+local autoDup = false
+local autoEquipSameAura = false
+local copyDelay = 0.1
+local selectedPlayer = nil
+local playerList = {}
+local playerDropdownOptions = {}
+local isAddingAuras = false
+local targetAuraCount = 0
+local showJoinNotifications = true
+local showLeaveNotifications = true
+local lastPlayerCount = #Players:GetPlayers()
+
+-- Window Creation
+local Window = OrionLib:MakeWindow({
+    Name = "Aura Craft GUI",
+    HidePremium = false,
+    SaveConfig = true,
+    ConfigFolder = "AuraCraftConfig",
+    IntroEnabled = true,
+    IntroText = "Aura Craft GUI Loading..."
+})
+
+-- Main Tab
+local MainTab = Window:MakeTab({
+    Name = "Main",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+local MainSection = MainTab:AddSection({
+    Name = "Aura Management"
+})
+
+-- Aura Input
+local auraNameInput = ""
+MainTab:AddTextbox({
+    Name = "Aura Name",
+    Default = "",
+    TextDisappear = false,
+    Placeholder = "Ex: Super Mega Energy Balls",
+    Callback = function(Value)
+        auraNameInput = Value
+    end
+})
+
+-- Equip Aura Button
+MainTab:AddButton({
+    Name = "💎 Equip Aura",
+    Callback = function()
+        if auraNameInput ~= "" then
+            local args = {
+                [1] = auraNameInput,
+                [2] = "1"
+            }
+            pcall(function()
+                ReplicatedStorage.Remotes.Equip_AURA:FireServer(unpack(args))
+            end)
+            OrionLib:MakeNotification({
+                Name = "Aura Equipped",
+                Content = "Attempting to equip: " .. auraNameInput,
+                Image = "rbxassetid://4483345998",
+                Time = 3
+            })
+        else
+            OrionLib:MakeNotification({
+                Name = "Error",
+                Content = "Please enter an aura name!",
+                Image = "rbxassetid://4483345998",
+                Time = 3
+            })
+        end
+    end
+})
+
+-- Add Auras Section
+local AddAurasSection = MainTab:AddSection({
+    Name = "Add Auras"
+})
+
+-- Target Aura Count Input
+local targetAurasInput = ""
+MainTab:AddTextbox({
+    Name = "Target Aura Count",
+    Default = "",
+    TextDisappear = false,
+    Placeholder = "Enter number of auras",
+    Callback = function(Value)
+        targetAurasInput = Value
+    end
+})
+
+-- Current Auras Label
+local currentAurasLabel = MainTab:AddLabel("Current Auras: 0")
+
+-- Update current auras count
+spawn(function()
+    while wait(0.5) do
+        pcall(function()
+            local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+            if leaderstats then
+                local auras = leaderstats:FindFirstChild("Auras")
+                if auras and auras.Value then
+                    currentAurasLabel:Set("Current Auras: " .. tostring(auras.Value))
+                end
+            end
+        end)
+    end
+end)
+
+-- Add Auras Button
+MainTab:AddButton({
+    Name = "🎯 Add Auras to Target",
+    Callback = function()
+        local targetNum = tonumber(targetAurasInput)
+        if targetNum and targetNum > 0 then
+            if not isAddingAuras then
+                isAddingAuras = true
+                targetAuraCount = targetNum
+                
+                OrionLib:MakeNotification({
+                    Name = "Adding Auras",
+                    Content = "Adding auras until count reaches " .. targetNum,
+                    Image = "rbxassetid://4483345998",
+                    Time = 3
+                })
+                
+                spawn(function()
+                    while isAddingAuras do
+                        local currentCount = 0
+                        pcall(function()
+                            local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+                            if leaderstats then
+                                local auras = leaderstats:FindFirstChild("Auras")
+                                if auras and auras.Value then
+                                    currentCount = auras.Value
+                                end
+                            end
+                        end)
+                        
+                        if currentCount >= targetAuraCount then
+                            isAddingAuras = false
+                            OrionLib:MakeNotification({
+                                Name = "Target Reached",
+                                Content = "Successfully reached " .. targetAuraCount .. " auras!",
+                                Image = "rbxassetid://4483345998",
+                                Time = 5
+                            })
+                            break
+                        end
+                        
+                        pcall(function()
+                            local args = {
+                                "plant",
+                                "EEOQRFIWGEW!@#$@(#WRUREFJIGEReJNPWQDLP#(!!!!"
+                            }
+                            ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ADDAURA"):FireServer(unpack(args))
+                        end)
+                        
+                        wait(0.1)
+                    end
+                end)
+            else
+                OrionLib:MakeNotification({
+                    Name = "Already Running",
+                    Content = "Aura addition is already in progress!",
+                    Image = "rbxassetid://4483345998",
+                    Time = 3
+                })
+            end
+        else
+            OrionLib:MakeNotification({
+                Name = "Error",
+                Content = "Please enter a valid number!",
+                Image = "rbxassetid://4483345998",
+                Time = 3
+            })
+        end
+    end
+})
+
+-- Stop Adding Auras Button
+MainTab:AddButton({
+    Name = "⛔ Stop Adding Auras",
+    Callback = function()
+        if isAddingAuras then
+            isAddingAuras = false
+            OrionLib:MakeNotification({
+                Name = "Stopped",
+                Content = "Stopped adding auras",
+                Image = "rbxassetid://4483345998",
+                Time = 2
+            })
+        else
+            OrionLib:MakeNotification({
+                Name = "Not Running",
+                Content = "Aura addition is not running!",
+                Image = "rbxassetid://4483345998",
+                Time = 2
+            })
+        end
+    end
+})
+
+-- Coin Section
+local CoinSection = MainTab:AddSection({
+    Name = "Coin Management"
+})
+
+-- Duplicate Coins Button
+MainTab:AddButton({
+    Name = "💰 Duplicate Coins",
+    Callback = function()
+        pcall(function()
+            ReplicatedStorage.Remotes.Duplicate:FireServer(coinAmount)
+        end)
+        OrionLib:MakeNotification({
+            Name = "Coins Duplicated",
+            Content = "Duplicated " .. coinAmount .. " coins!",
+            Image = "rbxassetid://4483345998",
+            Time = 2
+        })
+    end
+})
+
+-- Auto Duplicate Toggle
+MainTab:AddToggle({
+    Name = "🔄 Auto-Duplicate Coins",
+    Default = false,
+    Callback = function(Value)
+        autoDup = Value
+        if Value then
+            OrionLib:MakeNotification({
+                Name = "Auto-Duplicate",
+                Content = "Auto-Duplicate enabled!",
+                Image = "rbxassetid://4483345998",
+                Time = 2
+            })
+            spawn(function()
+                while autoDup do
+                    pcall(function()
+                        ReplicatedStorage.Remotes.Duplicate:FireServer(coinAmount)
+                    end)
+                    wait(0.1)
+                end
+            end)
+        else
+            OrionLib:MakeNotification({
+                Name = "Auto-Duplicate",
+                Content = "Auto-Duplicate disabled!",
+                Image = "rbxassetid://4483345998",
+                Time = 2
+            })
+        end
+    end
+})
+
+-- Copy Tab
+local CopyTab = Window:MakeTab({
+    Name = "Copy",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+local CopySection = CopyTab:AddSection({
+    Name = "Player Aura Tracker"
+})
+
+-- Player Selection Dropdown
+local playerDropdown = CopyTab:AddDropdown({
+    Name = "Select Player",
+    Default = "None",
+    Options = {"None"},
+    Callback = function(Value)
+        if Value ~= "None" then
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer then
+                    local displayText = player.Name .. "/" .. player.DisplayName
+                    if Value:find(displayText) then
+                        selectedPlayer = player
+                        break
+                    end
+                end
+            end
+        else
+            selectedPlayer = nil
+        end
+    end
+})
+
+-- Current Aura Label
+local currentAuraLabel = CopyTab:AddLabel("Current Aura: None")
+
+-- Last Equipped Aura Label
+local lastEquippedLabel = CopyTab:AddLabel("Last Equipped: None")
+
+-- Last Created Aura Label
+local lastCreatedLabel = CopyTab:AddLabel("Last Created: None")
+
+-- Cash Label
+local cashLabel = CopyTab:AddLabel("Cash: 0")
+
+-- Equip Same Aura Button
+CopyTab:AddButton({
+    Name = "Equip Same Aura",
+    Callback = function()
+        if selectedPlayer then
+            pcall(function()
+                local targetAura = selectedPlayer:FindFirstChild("Aura")
+                if targetAura and targetAura.Value then
+                    local args = {
+                        [1] = targetAura.Value,
+                        [2] = "1"
+                    }
+                    ReplicatedStorage.Remotes.Equip_AURA:FireServer(unpack(args))
+                    OrionLib:MakeNotification({
+                        Name = "Aura Copied",
+                        Content = "Equipped " .. targetAura.Value,
+                        Image = "rbxassetid://4483345998",
+                        Time = 3
+                    })
+                else
+                    OrionLib:MakeNotification({
+                        Name = "Error",
+                        Content = "Could not find player's aura!",
+                        Image = "rbxassetid://4483345998",
+                        Time = 3
+                    })
+                end
+            end)
+        else
+            OrionLib:MakeNotification({
+                Name = "Error",
+                Content = "Please select a player first!",
+                Image = "rbxassetid://4483345998",
+                Time = 3
+            })
+        end
+    end
+})
+
+-- Auto Equip Same Aura Toggle
+CopyTab:AddToggle({
+    Name = "Auto Equip Same Aura",
+    Default = false,
+    Callback = function(Value)
+        autoEquipSameAura = Value
+        if Value then
+            OrionLib:MakeNotification({
+                Name = "Auto Equip",
+                Content = "Auto equip enabled!",
+                Image = "rbxassetid://4483345998",
+                Time = 2
+            })
+            spawn(function()
+                while autoEquipSameAura do
+                    if selectedPlayer then
+                        pcall(function()
+                            local targetAura = selectedPlayer:FindFirstChild("Aura")
+                            if targetAura and targetAura.Value then
+                                local args = {
+                                    [1] = targetAura.Value,
+                                    [2] = "1"
+                                }
+                                ReplicatedStorage.Remotes.Equip_AURA:FireServer(unpack(args))
+                            end
+                        end)
+                    end
+                    wait(copyDelay)
+                end
+            end)
+        else
+            OrionLib:MakeNotification({
+                Name = "Auto Equip",
+                Content = "Auto equip disabled!",
+                Image = "rbxassetid://4483345998",
+                Time = 2
+            })
+        end
+    end
+})
+
+-- Copy Delay Textbox
+CopyTab:AddTextbox({
+    Name = "Auto Equip Delay (seconds)",
+    Default = "0.1",
+    TextDisappear = false,
+    Placeholder = "0.1",
+    Callback = function(Value)
+        local num = tonumber(Value)
+        if num and num > 0 then
+            copyDelay = num
+            OrionLib:MakeNotification({
+                Name = "Delay Updated",
+                Content = "Delay set to " .. num .. " seconds",
+                Image = "rbxassetid://4483345998",
+                Time = 2
+            })
+        else
+            OrionLib:MakeNotification({
+                Name = "Error",
+                Content = "Please enter a valid number!",
+                Image = "rbxassetid://4483345998",
+                Time = 3
+            })
+        end
+    end
+})
+
+-- Function to update player list (optimized to prevent constant refresh)
+local lastUpdateTime = 0
+local updateCooldown = 2 -- Update dropdown every 2 seconds instead of 0.1
+local function UpdatePlayerList()
+    local currentTime = tick()
+    if currentTime - lastUpdateTime < updateCooldown then
+        return
+    end
+    lastUpdateTime = currentTime
+    
+    playerDropdownOptions = {"None"}
+    playerList = {}
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local auraValue = "No Aura"
+            pcall(function()
+                local aura = player:FindFirstChild("Aura")
+                if aura and aura.Value then
+                    auraValue = aura.Value
+                end
+            end)
+            
+            local displayText = player.Name .. "/" .. player.DisplayName .. " - " .. auraValue
+            table.insert(playerDropdownOptions, displayText)
+            table.insert(playerList, player)
+        end
+    end
+    
+    playerDropdown:Refresh(playerDropdownOptions, true)
+end
+
+-- Function to update selected player info
+local function UpdatePlayerInfo()
+    if selectedPlayer and selectedPlayer.Parent then
+        -- Update Current Aura
+        pcall(function()
+            local aura = selectedPlayer:FindFirstChild("Aura")
+            if aura and aura.Value then
+                currentAuraLabel:Set("Current Aura: " .. tostring(aura.Value))
+            else
+                currentAuraLabel:Set("Current Aura: None")
+            end
+        end)
+        
+        -- Update Last Equipped Aura
+        pcall(function()
+            local lastAura = selectedPlayer:FindFirstChild("LastAura")
+            if lastAura and lastAura.Value then
+                lastEquippedLabel:Set("Last Equipped: " .. tostring(lastAura.Value))
+            else
+                lastEquippedLabel:Set("Last Equipped: None")
+            end
+        end)
+        
+        -- Update Last Created Aura
+        pcall(function()
+            local lastCreated = selectedPlayer:FindFirstChild("LastCreated")
+            if lastCreated and lastCreated.Value then
+                lastCreatedLabel:Set("Last Created: " .. tostring(lastCreated.Value))
+            else
+                lastCreatedLabel:Set("Last Created: None")
+            end
+        end)
+        
+        -- Update Cash
+        pcall(function()
+            local coinsFolder = selectedPlayer:FindFirstChild("CoinsFolder")
+            if coinsFolder then
+                local cash = coinsFolder:FindFirstChild("Cash")
+                if cash and cash.Value then
+                    cashLabel:Set("Cash: " .. tostring(cash.Value))
+                else
+                    cashLabel:Set("Cash: 0")
+                end
+            else
+                cashLabel:Set("Cash: 0")
+            end
+        end)
+    else
+        currentAuraLabel:Set("Current Aura: None")
+        lastEquippedLabel:Set("Last Equipped: None")
+        lastCreatedLabel:Set("Last Created: None")
+        cashLabel:Set("Cash: 0")
+    end
+end
+
+-- Player Added Event
+Players.PlayerAdded:Connect(function(player)
+    wait(0.1)
+    UpdatePlayerList()
+    if showJoinNotifications then
+        OrionLib:MakeNotification({
+            Name = "Player Joined",
+            Content = player.Name .. " joined the game!",
+            Image = "rbxassetid://4483345998",
+            Time = 2
+        })
+    end
+end)
+
+-- Player Removing Event
+Players.PlayerRemoving:Connect(function(player)
+    if selectedPlayer == player then
+        selectedPlayer = nil
+    end
+    wait(0.1)
+    UpdatePlayerList()
+    if showLeaveNotifications then
+        OrionLib:MakeNotification({
+            Name = "Player Left",
+            Content = player.Name .. " left the game!",
+            Image = "rbxassetid://4483345998",
+            Time = 2
+        })
+    end
+end)
+
+-- Real-time update loop (0.1 second intervals for info, slower for dropdown)
+spawn(function()
+    while wait(0.1) do
+        pcall(function()
+            UpdatePlayerInfo()
+            
+            -- Check for player count changes for dropdown update
+            local currentPlayerCount = #Players:GetPlayers()
+            if currentPlayerCount ~= lastPlayerCount then
+                lastPlayerCount = currentPlayerCount
+                UpdatePlayerList()
+            end
+        end)
+    end
+end)
+
+-- Initial player list update
+UpdatePlayerList()
+
+-- Settings Tab
+local SettingsTab = Window:MakeTab({
+    Name = "Settings",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+local NotificationSettings = SettingsTab:AddSection({
+    Name = "Notification Settings"
+})
+
+-- Toggle for Join Notifications
+SettingsTab:AddToggle({
+    Name = "Player Join Notifications",
+    Default = true,
+    Callback = function(Value)
+        showJoinNotifications = Value
+        OrionLib:MakeNotification({
+            Name = "Settings Updated",
+            Content = "Join notifications " .. (Value and "enabled" or "disabled"),
+            Image = "rbxassetid://4483345998",
+            Time = 2
+        })
+    end
+})
+
+-- Toggle for Leave Notifications
+SettingsTab:AddToggle({
+    Name = "Player Leave Notifications",
+    Default = true,
+    Callback = function(Value)
+        showLeaveNotifications = Value
+        OrionLib:MakeNotification({
+            Name = "Settings Updated",
+            Content = "Leave notifications " .. (Value and "enabled" or "disabled"),
+            Image = "rbxassetid://4483345998",
+            Time = 2
+        })
+    end
+})
+
+local GUISettings = SettingsTab:AddSection({
+    Name = "GUI Controls"
+})
+
+SettingsTab:AddButton({
+    Name = "Destroy GUI",
+    Callback = function()
+        OrionLib:Destroy()
+    end
+})
+
+SettingsTab:AddButton({
+    Name = "Reload GUI",
+    Callback = function()
+        OrionLib:Destroy()
+        wait(0.5)
+        loadstring(game:HttpGet(("https://raw.githubusercontent.com/Giangplay/Script/main/Orion_Library_PE_V2.lua")))()
+    end
+})
+
+-- Credits Section
+local CreditsSection = SettingsTab:AddSection({
+    Name = "Information"
+})
+
+SettingsTab:AddLabel("Aura Craft GUI V2")
+SettingsTab:AddLabel("Mobile Optimized")
+SettingsTab:AddLabel("Enhanced Performance")
+
+-- Initialize
+OrionLib:Init()
+
+OrionLib:MakeNotification({
+    Name = "Aura Craft GUI Loaded",
+    Content = "GUI successfully loaded! Mobile optimized.",
+    Image = "rbxassetid://4483345998",
+    Time = 5
+})
+end)
+
+addcmd('ShiftlockGUI',{'Shiftlock'},function(args, speaker)
+loadstring(game:HttpGet("https://raw.githubusercontent.com/prosadaf/Example/refs/heads/main/Video"))()
+end)
+
+addcmd('wave',{},function(args, speaker)
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    
+    if character then
+        local humanoid = character:FindFirstChildOfClass('Humanoid')
+        if humanoid then
+            local animator = humanoid:FindFirstChildOfClass('Animator')
+            if not animator then
+                animator = Instance.new("Animator")
+                animator.Parent = humanoid
+            end
+            
+            -- Stop all currently playing animations except core ones
+            local playingTracks = animator:GetPlayingAnimationTracks()
+            for _, track in pairs(playingTracks) do
+                if track.Priority ~= Enum.AnimationPriority.Core then
+                    track:Stop()
+                end
+            end
+            
+            -- Correct wave animation ID
+            local waveAnimationId = "http://www.roblox.com/asset/?id=128777973"
+            
+            -- Create animation instance
+            local waveAnim = Instance.new("Animation")
+            waveAnim.AnimationId = waveAnimationId
+            
+            -- Load and play the animation
+            local waveTrack = animator:LoadAnimation(waveAnim)
+            waveTrack.Priority = Enum.AnimationPriority.Action
+            waveTrack:Play()
+            
+            -- Clean up after animation finishes
+            waveTrack.Stopped:Connect(function()
+                waveAnim:Destroy()
+            end)
+        end
+    end
+end)
+
+addcmd('zoanim',{'zoanimgui'},function(args, speaker)
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+
+-- Updated Animation IDs with names
+local animationIds = {
+    ["Facepalm"] = "rbxassetid://6747110329",
+    ["Lean-Back"] = "rbxassetid://7234736609",
+    ["Ledge-Sit"] = "rbxassetid://7055109566",
+    ["Yakuza/Flailing-Arms"] = "rbxassetid://6818421387",
+    ["Throw"] = "rbxassetid://15161462053",
+    ["Punches"] = "rbxassetid://13452846777",
+    ["Cool Slash"] = "rbxassetid://13452856736",
+    ["Kanabo Flaunt Taunt"] = "rbxassetid://9003652864",
+    ["Weapon Lick"] = "rbxassetid://13452940547",
+    ["Weapon Throw"] = "rbxassetid://13452950106",
+    ["Wave"] = "rbxassetid://128777973",
+    ["Basic Weapon Spin"] = "rbxassetid://11326189863",
+    ["Hit Down"] = "rbxassetid://9234350319",
+    ["Kneel Pray"] = "rbxassetid://11812955950",
+    ["Point"] = "rbxassetid://9013391552",
+    ["Weapon Spinner"] = "rbxassetid://13452870518",
+    ["Spin Once"] = "rbxassetid://11941379711",
+    ["Cool Spin"] = "rbxassetid://11941371404",
+    ["Call Weapon"] = "rbxassetid://13452884918",
+    ["Weapon Stand"] = "rbxassetid://13452922479"
+}
+
+-- Persistent state storage
+local guiState = {
+    framePosition = UDim2.new(0.5, -125, 0.2, 0),
+    minimizeButtonPosition = nil,
+    isMinimized = false,
+    forceAnimations = false -- NEW: Force animation toggle state
+}
+
+local animations = {}
+local currentAnimator = nil
+
+-- CREATE GUI (Only once, persists across respawns)
+local screenGui = Instance.new("ScreenGui")
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+-- Main UI Frame (Compact size)
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 250, 0, 330) -- Increased height for toggle
+frame.Position = guiState.framePosition
+frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+frame.BorderSizePixel = 2
+frame.Parent = screenGui
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 30)
+title.BackgroundTransparency = 1
+title.Text = "Animation Control"
+title.TextSize = 16
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Parent = frame
+
+-- FORCE ANIMATION TOGGLE
+local forceToggleFrame = Instance.new("Frame")
+forceToggleFrame.Size = UDim2.new(1, -10, 0, 25)
+forceToggleFrame.Position = UDim2.new(0, 5, 0, 35)
+forceToggleFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+forceToggleFrame.BorderSizePixel = 0
+forceToggleFrame.Parent = frame
+
+local forceToggleLabel = Instance.new("TextLabel")
+forceToggleLabel.Size = UDim2.new(0.7, 0, 1, 0)
+forceToggleLabel.Position = UDim2.new(0, 5, 0, 0)
+forceToggleLabel.BackgroundTransparency = 1
+forceToggleLabel.Text = "Force Animations"
+forceToggleLabel.TextSize = 12
+forceToggleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+forceToggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+forceToggleLabel.Parent = forceToggleFrame
+
+local forceToggleDot = Instance.new("TextButton")
+forceToggleDot.Size = UDim2.new(0, 20, 0, 20)
+forceToggleDot.Position = UDim2.new(1, -25, 0.5, -10)
+forceToggleDot.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- Red = OFF
+forceToggleDot.Text = ""
+forceToggleDot.Parent = forceToggleFrame
+
+local dotCorner = Instance.new("UICorner")
+dotCorner.CornerRadius = UDim.new(1, 0)
+dotCorner.Parent = forceToggleDot
+
+-- SCROLLABLE FRAME
+local scrollFrame = Instance.new("ScrollingFrame")
+scrollFrame.Size = UDim2.new(1, 0, 1, -75) -- Adjusted for toggle
+scrollFrame.Position = UDim2.new(0, 0, 0, 70) -- Adjusted for toggle
+scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 700)
+scrollFrame.ScrollBarThickness = 5
+scrollFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+scrollFrame.BorderSizePixel = 0
+scrollFrame.Parent = frame
+
+-- UI List Layout
+local layout = Instance.new("UIListLayout")
+layout.Parent = scrollFrame
+layout.Padding = UDim.new(0, 5)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+-- Minimize Button
+local minimizeButton = Instance.new("TextButton")
+minimizeButton.Size = UDim2.new(0, 60, 0, 30)
+minimizeButton.Position = guiState.minimizeButtonPosition or UDim2.new(0.5, -30, 0, frame.Size.Y.Offset + 5)
+minimizeButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+minimizeButton.Text = guiState.isMinimized and "Show" or "Hide"
+minimizeButton.Parent = screenGui
+minimizeButton.BackgroundTransparency = 0.2
+
+-- Set initial visibility based on saved state
+frame.Visible = not guiState.isMinimized
+
+-- Force Toggle Functionality
+forceToggleDot.MouseButton1Click:Connect(function()
+    guiState.forceAnimations = not guiState.forceAnimations
+    
+    if guiState.forceAnimations then
+        forceToggleDot.BackgroundColor3 = Color3.fromRGB(50, 200, 50) -- Green = ON
+    else
+        forceToggleDot.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- Red = OFF
+    end
+end)
+
+-- Generate Play/Pause buttons inside the scroll frame
+local buttons = {}
+local animationButtons = {}
+
+for name, id in pairs(animationIds) do
+    local buttonContainer = Instance.new("Frame")
+    buttonContainer.Size = UDim2.new(1, 0, 0, 35)
+    buttonContainer.BackgroundTransparency = 1
+    buttonContainer.Parent = scrollFrame
+
+    local playButton = Instance.new("TextButton")
+    playButton.Size = UDim2.new(0.45, -5, 1, 0)
+    playButton.Position = UDim2.new(0, 0, 0, 0)
+    playButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+    playButton.Text = "Play " .. name
+    playButton.TextSize = 12
+    playButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    playButton.Parent = buttonContainer
+
+    local pauseButton = Instance.new("TextButton")
+    pauseButton.Size = UDim2.new(0.45, -5, 1, 0)
+    pauseButton.Position = UDim2.new(0.55, 0, 0, 0)
+    pauseButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    pauseButton.Text = "Pause " .. name
+    pauseButton.TextSize = 12
+    pauseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    pauseButton.Parent = buttonContainer
+
+    table.insert(buttons, playButton)
+    table.insert(buttons, pauseButton)
+
+    animationButtons[name] = {
+        play = playButton,
+        pause = pauseButton
+    }
+end
+
+-- Update CanvasSize based on content height
+layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
+end)
+
+-- Minimize UI Functionality
+minimizeButton.MouseButton1Click:Connect(function()
+    guiState.isMinimized = not guiState.isMinimized
+
+    if guiState.isMinimized then
+        frame.Visible = false
+        minimizeButton.Text = "Show"
+    else
+        frame.Visible = true
+        minimizeButton.Text = "Hide"
+    end
+end)
+
+-- DRAGGABLE GUI (Mobile & PC Support)
+local dragging, dragInput, startPos, dragStart
+
+local function enableDragging(guiElement, savePositionCallback)
+    guiElement.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = guiElement.Position
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                    if savePositionCallback then
+                        savePositionCallback(guiElement.Position)
+                    end
+                end
+            end)
+        end
+    end)
+
+    guiElement.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
+            dragInput = input
+        end
+    end)
+
+    UIS.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            guiElement.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X, 
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+end
+
+-- Enable dragging with position saving
+enableDragging(frame, function(pos)
+    guiState.framePosition = pos
+end)
+
+enableDragging(minimizeButton, function(pos)
+    guiState.minimizeButtonPosition = pos
+end)
+
+-- Function to load animations for current character
+local function loadAnimationsForCharacter(character)
+    local humanoid = character:WaitForChild("Humanoid", 10)
+    if not humanoid then return end
+    
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if not animator then
+        animator = humanoid:WaitForChild("Animator", 10)
+    end
+    if not animator then return end
+    
+    currentAnimator = animator
+    
+    -- Clear old animations
+    for name, anim in pairs(animations) do
+        if anim then
+            pcall(function()
+                anim:Stop()
+            end)
+        end
+    end
+    animations = {}
+    
+    -- Load new animations
+    for name, id in pairs(animationIds) do
+        local animation = Instance.new("Animation")
+        animation.AnimationId = id
+        local loadedAnim = animator:LoadAnimation(animation)
+        animations[name] = loadedAnim
+        
+        -- Reconnect buttons
+        if animationButtons[name] then
+            local playBtn = animationButtons[name].play
+            local pauseBtn = animationButtons[name].pause
+            
+            playBtn.MouseButton1Click:Connect(function()
+                if animations[name] then
+                    -- Check if force animations is enabled
+                    if guiState.forceAnimations then
+                        -- Stop all non-core animations
+                        local playingTracks = animator:GetPlayingAnimationTracks()
+                        for _, track in pairs(playingTracks) do
+                            if track.Priority ~= Enum.AnimationPriority.Core then
+                                track:Stop()
+                            end
+                        end
+                        -- Set higher priority and play
+                        animations[name].Priority = Enum.AnimationPriority.Action
+                    end
+                    animations[name]:Play()
+                end
+            end)
+            
+            pauseBtn.MouseButton1Click:Connect(function()
+                if animations[name] then
+                    animations[name]:Stop()
+                end
+            end)
+        end
+    end
+end
+
+-- Initial load for current character
+local function setupCharacter()
+    local character = player.Character
+    if character then
+        loadAnimationsForCharacter(character)
+    end
+end
+
+-- Handle respawns
+player.CharacterAdded:Connect(function(character)
+    loadAnimationsForCharacter(character)
+end)
+
+-- Initial setup
+setupCharacter()
 end)
 
 addcmd('Evade',{'evade GUI'},function(args, speaker)
