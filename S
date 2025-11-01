@@ -20972,7 +20972,9 @@ local wfVisualizationConnection = nil
 local wfAuraTransparency = 0.8
 local wfAuraColor = Color3.fromRGB(0, 0, 0)
 
-local function getClosestTargetInRadius(fromPosition, radius)
+-- Walk Fling Aura Helper Functions (REPLACE ALL HELPER FUNCTIONS)
+
+local function getClosestTargetInRadius(fromPosition, radius, speaker)
     local closestTarget = nil
     local closestDistance = radius
     
@@ -20992,7 +20994,7 @@ local function getClosestTargetInRadius(fromPosition, radius)
     return closestTarget
 end
 
-local function wfEnableNoclip()
+local function wfEnableNoclip(speaker)
     if wfNoclipConnection then return end
     
     wfNoclipConnection = RunService.Stepped:Connect(function()
@@ -21006,7 +21008,7 @@ local function wfEnableNoclip()
     end)
 end
 
-local function wfDisableNoclip()
+local function wfDisableNoclip(speaker)
     if wfNoclipConnection then
         wfNoclipConnection:Disconnect()
         wfNoclipConnection = nil
@@ -21063,7 +21065,7 @@ local function wfUpdateVisualizationColor()
     end
 end
 
-local function wfEnableVisualization()
+local function wfEnableVisualization(speaker)
     if wfVisualizationEnabled then return end
     
     wfVisualizationEnabled = true
@@ -21234,13 +21236,15 @@ local function stopWalkFlingAura(speaker)
     notify("Walk Fling Aura", "Disabled")
 end
 
+-- Walk Fling Aura Commands (REPLACE ALL ADDCMD BLOCKS)
+
 addcmd('walkflingaura',{'wfaura'},function(args, speaker)
     local radius = args[1] and tonumber(args[1]) or 10
-    startWalkFlingAura(radius)
+    startWalkFlingAura(radius, speaker)
 end)
 
 addcmd('unwalkflingaura',{'unwfaura'},function(args, speaker)
-    stopWalkFlingAura()
+    stopWalkFlingAura(speaker)
 end)
 
 addcmd('walkflingauravis',{'wfauravis'},function(args, speaker)
@@ -21252,7 +21256,7 @@ addcmd('walkflingauravis',{'wfauravis'},function(args, speaker)
     if wfVisualizationEnabled then
         notify("Walk Fling Aura", "Visualization already enabled!")
     else
-        wfEnableVisualization()
+        wfEnableVisualization(speaker)
         notify("Walk Fling Aura", "Visualization enabled")
     end
 end)
