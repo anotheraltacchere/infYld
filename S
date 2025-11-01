@@ -4368,6 +4368,12 @@ CMDs[#CMDs + 1] = {NAME = 'AuraCraft', DESC = 'Aura craft game GUI'}
 CMDs[#CMDs + 1] = {NAME = 'ShiftlockGUI / Shiftlock', DESC = 'Shiftlock GUI'}
 CMDs[#CMDs + 1] = {NAME = 'wave', DESC = 'wave emote'}
 CMDs[#CMDs + 1] = {NAME = 'zoanim / zoanimgui', DESC = 'animation gui for zo'}
+CMDs[#CMDs + 1] = {NAME = 'walkflingaura / wfaura [radius]', DESC = 'Enables walk fling aura with specified radius'}
+CMDs[#CMDs + 1] = {NAME = 'unwalkflingaura / unwfaura', DESC = 'Disables walk fling aura'}
+CMDs[#CMDs + 1] = {NAME = 'walkflingauravis / wfauravis', DESC = 'Enables walk fling aura visualization'}
+CMDs[#CMDs + 1] = {NAME = 'unwalkflingauravis / unwfauravis', DESC = 'Disables walk fling aura visualization'}
+CMDs[#CMDs + 1] = {NAME = 'walkflingauratrans / wfauratrans [transparency]', DESC = 'Sets walk fling aura transparency (0-1)'}
+CMDs[#CMDs + 1] = {NAME = 'walkflingauracolor / wfauracolor [r] [g] [b]', DESC = 'Sets walk fling aura color (RGB 0-255)'}
 CMDs[#CMDs + 1] = {NAME = 'Evade / Evade GUI', DESC = 'Evade script'}
 CMDs[#CMDs + 1] = {NAME = 'Zoweapon remover / weaponremover', DESC = 'Zo weapon remover GUI'}
 CMDs[#CMDs + 1] = {NAME = 'Zocontrolsset / zocontrols', DESC = 'Zo controls setting GUI'}
@@ -20953,6 +20959,338 @@ end)
 
 -- Initial setup
 setupCharacter()
+end)
+
+local walkflingaura = false
+local wfAuraRadius = 10
+local wfNoclipConnection = nil
+local wfIsAttacking = false
+local wfSavedPosition = nil
+local wfVisualizationEnabled = false
+local wfAuraBall = nil
+local wfVisualizationConnection = nil
+local wfAuraTransparency = 0.8
+local wfAuraColor = Color3.fromRGB(0, 0, 0)
+
+local function getClosestTargetInRadius(fromPosition, radius)
+    local closestTarget = nil
+    local closestDistance = radius
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= speaker and player.Character then
+            local targetRoot = getRoot(player.Character)
+            if targetRoot then
+                local distance = (targetRoot.Position - fromPosition).Magnitude
+                if distance <= radius and distance < closestDistance then
+                    closestTarget = targetRoot
+                    closestDistance = distance
+                end
+            end
+        end
+    end
+    
+    return closestTarget
+end
+
+local function wfEnableNoclip()
+    if wfNoclipConnection then return end
+    
+    wfNoclipConnection = RunService.Stepped:Connect(function()
+        if speaker.Character then
+            for _, part in pairs(speaker.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+        end
+    end)
+end
+
+local function wfDisableNoclip()
+    if wfNoclipConnection then
+        wfNoclipConnection:Disconnect()
+        wfNoclipConnection = nil
+    end
+    
+    if speaker.Character then
+        for _, part in pairs(speaker.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = true
+            end
+        end
+    end
+end
+
+local function wfCreateVisualization()
+    if wfAuraBall then
+        wfAuraBall:Destroy()
+    end
+    
+    wfAuraBall = Instance.new("Part")
+    wfAuraBall.Name = "FlingAuraBall"
+    wfAuraBall.Shape = Enum.PartType.Ball
+    wfAuraBall.Size = Vector3.new(wfAuraRadius * 2, wfAuraRadius * 2, wfAuraRadius * 2)
+    wfAuraBall.Color = wfAuraColor
+    wfAuraBall.Material = Enum.Material.ForceField
+    wfAuraBall.Transparency = wfAuraTransparency
+    wfAuraBall.CanCollide = false
+    wfAuraBall.Anchored = true
+    wfAuraBall.CastShadow = false
+    wfAuraBall.Parent = workspace
+end
+
+local function wfUpdateVisualizationPosition(position)
+    if wfAuraBall and wfAuraBall.Parent then
+        wfAuraBall.Position = position
+    end
+end
+
+local function wfUpdateVisualizationSize()
+    if wfAuraBall and wfAuraBall.Parent then
+        wfAuraBall.Size = Vector3.new(wfAuraRadius * 2, wfAuraRadius * 2, wfAuraRadius * 2)
+    end
+end
+
+local function wfUpdateVisualizationTransparency()
+    if wfAuraBall and wfAuraBall.Parent then
+        wfAuraBall.Transparency = wfAuraTransparency
+    end
+end
+
+local function wfUpdateVisualizationColor()
+    if wfAuraBall and wfAuraBall.Parent then
+        wfAuraBall.Color = wfAuraColor
+    end
+end
+
+local function wfEnableVisualization()
+    if wfVisualizationEnabled then return end
+    
+    wfVisualizationEnabled = true
+    wfCreateVisualization()
+    
+    wfVisualizationConnection = RunService.RenderStepped:Connect(function()
+        if speaker.Character then
+            local root = getRoot(speaker.Character)
+            if root and root.Parent then
+                if wfIsAttacking and wfSavedPosition then
+                    wfUpdateVisualizationPosition(wfSavedPosition)
+                else
+                    wfUpdateVisualizationPosition(root.Position)
+                end
+            end
+        end
+    end)
+end
+
+local function wfDisableVisualization()
+    wfVisualizationEnabled = false
+    
+    if wfVisualizationConnection then
+        wfVisualizationConnection:Disconnect()
+        wfVisualizationConnection = nil
+    end
+    
+    if wfAuraBall then
+        wfAuraBall:Destroy()
+        wfAuraBall = nil
+    end
+end
+
+local function startWalkFlingAura(radius)
+    if walkflingaura then
+        notify("Walk Fling Aura", "Already active!")
+        return
+    end
+    
+    if not speaker.Character then
+        notify("Walk Fling Aura", "Character not found!")
+        return
+    end
+    
+    local root = getRoot(speaker.Character)
+    if not root then
+        notify("Walk Fling Aura", "Character root not found!")
+        return
+    end
+    
+    wfAuraRadius = radius or 10
+    
+    local humanoid = speaker.Character:FindFirstChildWhichIsA("Humanoid")
+    if humanoid then
+        humanoid.Died:Connect(function()
+            walkflingaura = false
+            wfDisableNoclip()
+            wfDisableVisualization()
+        end)
+    end
+    
+    wfEnableNoclip()
+    wfEnableVisualization()
+    
+    walkflingaura = true
+    wfIsAttacking = false
+    
+    notify("Walk Fling Aura", "Enabled with radius: " .. wfAuraRadius)
+    
+    spawn(function()
+        while walkflingaura do
+            RunService.Heartbeat:Wait()
+            
+            local character = speaker.Character
+            local root = getRoot(character)
+            
+            while not (character and character.Parent and root and root.Parent) do
+                RunService.Heartbeat:Wait()
+                character = speaker.Character
+                root = getRoot(character)
+            end
+            
+            local vel = root.Velocity
+            root.Velocity = vel * 10000 + Vector3.new(0, 10000, 0)
+            
+            RunService.RenderStepped:Wait()
+            if character and character.Parent and root and root.Parent then
+                root.Velocity = vel
+            end
+            
+            RunService.Stepped:Wait()
+            if character and character.Parent and root and root.Parent then
+                root.Velocity = vel + Vector3.new(0, 0.1, 0)
+            end
+        end
+    end)
+    
+    spawn(function()
+        while walkflingaura do
+            task.wait(0.05)
+            
+            local character = speaker.Character
+            local root = getRoot(character)
+            
+            if not (character and character.Parent and root and root.Parent) then
+                continue
+            end
+            
+            if not wfIsAttacking then
+                local closestTarget = getClosestTargetInRadius(root.Position, wfAuraRadius)
+                
+                if closestTarget then
+                    wfIsAttacking = true
+                    wfSavedPosition = root.Position
+                    
+                    spawn(function()
+                        local attackStartTime = tick()
+                        while wfIsAttacking and walkflingaura and tick() - attackStartTime < 2 do
+                            task.wait(0.01)
+                            
+                            character = speaker.Character
+                            root = getRoot(character)
+                            
+                            if not (character and character.Parent and root and root.Parent) then
+                                break
+                            end
+                            
+                            if closestTarget and closestTarget.Parent then
+                                local distanceFromSaved = (closestTarget.Position - wfSavedPosition).Magnitude
+                                if distanceFromSaved <= wfAuraRadius then
+                                    root.CFrame = CFrame.new(closestTarget.Position)
+                                else
+                                    break
+                                end
+                            else
+                                break
+                            end
+                        end
+                        
+                        if wfSavedPosition and root and root.Parent then
+                            root.CFrame = CFrame.new(wfSavedPosition)
+                        end
+                        
+                        wfIsAttacking = false
+                        wfSavedPosition = nil
+                    end)
+                end
+            end
+        end
+        
+        wfDisableNoclip()
+        wfDisableVisualization()
+    end)
+end
+
+local function stopWalkFlingAura()
+    if not walkflingaura then
+        notify("Walk Fling Aura", "Not active!")
+        return
+    end
+    
+    walkflingaura = false
+    wfIsAttacking = false
+    wfSavedPosition = nil
+    wfDisableNoclip()
+    wfDisableVisualization()
+    
+    notify("Walk Fling Aura", "Disabled")
+end
+
+addcmd('walkflingaura',{'wfaura'},function(args, speaker)
+    local radius = args[1] and tonumber(args[1]) or 10
+    startWalkFlingAura(radius)
+end)
+
+addcmd('unwalkflingaura',{'unwfaura'},function(args, speaker)
+    stopWalkFlingAura()
+end)
+
+addcmd('walkflingauravis',{'wfauravis'},function(args, speaker)
+    if not walkflingaura then
+        notify("Walk Fling Aura", "Aura not active! Start it first with ;walkflingaura")
+        return
+    end
+    
+    if wfVisualizationEnabled then
+        notify("Walk Fling Aura", "Visualization already enabled!")
+    else
+        wfEnableVisualization()
+        notify("Walk Fling Aura", "Visualization enabled")
+    end
+end)
+
+addcmd('unwalkflingauravis',{'unwfauravis'},function(args, speaker)
+    if wfVisualizationEnabled then
+        wfDisableVisualization()
+        notify("Walk Fling Aura", "Visualization disabled")
+    else
+        notify("Walk Fling Aura", "Visualization not active!")
+    end
+end)
+
+addcmd('walkflingauratrans',{'wfauratrans'},function(args, speaker)
+    local trans = args[1] and tonumber(args[1])
+    if not trans then
+        notify("Walk Fling Aura", "Invalid transparency! Use: 0-1 (example: 0.5)")
+        return
+    end
+    
+    wfAuraTransparency = math.clamp(trans, 0, 1)
+    wfUpdateVisualizationTransparency()
+    notify("Walk Fling Aura", "Transparency set to: " .. wfAuraTransparency)
+end)
+
+addcmd('walkflingauracolor',{'wfauracolor'},function(args, speaker)
+    local r = args[1] and tonumber(args[1])
+    local g = args[2] and tonumber(args[2])
+    local b = args[3] and tonumber(args[3])
+    
+    if not (r and g and b) then
+        notify("Walk Fling Aura", "Invalid color! Use: r g b (0-255). Example: 255 0 0 for red")
+        return
+    end
+    
+    wfAuraColor = Color3.fromRGB(r, g, b)
+    wfUpdateVisualizationColor()
+    notify("Walk Fling Aura", "Color updated to RGB(" .. r .. ", " .. g .. ", " .. b .. ")")
 end)
 
 addcmd('Evade',{'evade GUI'},function(args, speaker)
