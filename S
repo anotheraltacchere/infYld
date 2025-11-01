@@ -4377,6 +4377,9 @@ CMDs[#CMDs + 1] = {NAME = 'walkflingauracolor / wfauracolor [r] [g] [b]', DESC =
 CMDs[#CMDs + 1] = {NAME = 'voidtp / void', DESC = 'Teleports you to the void'}
 CMDs[#CMDs + 1] = {NAME = 'voidback / undovoid', DESC = 'Returns you from the void to saved position'}
 CMDs[#CMDs + 1] = {NAME = 'voidpos [x] [y] [z]', DESC = 'Sets custom void teleport position'}
+CMDs[#CMDs + 1] = {NAME = 'voidplatform / voidbase [size]', DESC = 'Creates a platform at void depth'}
+CMDs[#CMDs + 1] = {NAME = 'novoidplatform / unvoidbase', DESC = 'Removes the void platform'}
+CMDs[#CMDs + 1] = {NAME = 'voidplatformtrans [transparency]', DESC = 'Sets void platform transparency (0-1)'}
 CMDs[#CMDs + 1] = {NAME = 'Evade / Evade GUI', DESC = 'Evade script'}
 CMDs[#CMDs + 1] = {NAME = 'Zoweapon remover / weaponremover', DESC = 'Zo weapon remover GUI'}
 CMDs[#CMDs + 1] = {NAME = 'Zocontrolsset / zocontrols', DESC = 'Zo controls setting GUI'}
@@ -21364,6 +21367,71 @@ addcmd('voidpos',{},function(args, speaker)
     if not (x and y and z) then return end
     
     customVoidY = y
+end)
+
+local voidPlatform = nil
+local voidPlatformSize = 2000
+local voidPlatformTransparency = 0.5
+
+local function createVoidPlatform(size, speaker)
+    if voidPlatform then
+        voidPlatform:Destroy()
+    end
+    
+    local character = speaker.Character
+    if not character then return end
+    
+    local root = getRoot(character)
+    if not root then return end
+    
+    voidPlatformSize = size or 2000
+    
+    voidPlatform = Instance.new("Part")
+    voidPlatform.Name = "voidplat00"
+    voidPlatform.Size = Vector3.new(voidPlatformSize, 1, voidPlatformSize)
+    voidPlatform.Position = Vector3.new(root.Position.X, customVoidY - 3, root.Position.Z)
+    voidPlatform.Anchored = true
+    voidPlatform.CanCollide = true
+    voidPlatform.Transparency = voidPlatformTransparency
+    voidPlatform.Reflectance = 0
+    voidPlatform.Material = Enum.Material.Plastic
+    voidPlatform.TopSurface = Enum.SurfaceType.Smooth
+    voidPlatform.BottomSurface = Enum.SurfaceType.Smooth
+    voidPlatform.Color = Color3.fromRGB(0, 0, 0)
+    voidPlatform.CastShadow = false
+    voidPlatform.Parent = workspace
+end
+
+local function removeVoidPlatform()
+    if voidPlatform then
+        voidPlatform:Destroy()
+        voidPlatform = nil
+    end
+end
+
+local function setVoidPlatformTransparency(trans)
+    if not trans then return end
+    
+    voidPlatformTransparency = math.clamp(trans, 0, 1)
+    
+    if voidPlatform and voidPlatform.Parent then
+        voidPlatform.Transparency = voidPlatformTransparency
+    end
+end
+
+addcmd('voidplatform',{'voidbase'},function(args, speaker)
+    local size = args[1] and tonumber(args[1]) or 2000
+    createVoidPlatform(size, speaker)
+end)
+
+addcmd('novoidplatform',{'unvoidbase'},function(args, speaker)
+    removeVoidPlatform()
+end)
+
+addcmd('voidplatformtrans',{},function(args, speaker)
+    local trans = args[1] and tonumber(args[1])
+    if not trans then return end
+    setVoidPlatformTransparency(trans)
 end)
 
 addcmd('Evade',{'evade GUI'},function(args, speaker)
