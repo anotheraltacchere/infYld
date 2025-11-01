@@ -4386,6 +4386,7 @@ CMDs[#CMDs + 1] = {NAME = 'removeplatform / rplatform [name]', DESC = 'Removes a
 CMDs[#CMDs + 1] = {NAME = 'platformtrans [name] [transparency]', DESC = 'Sets platform transparency (0-1)'}
 CMDs[#CMDs + 1] = {NAME = 'platformcolor [name] [r] [g] [b]', DESC = 'Sets platform color (RGB 0-255)'}
 CMDs[#CMDs + 1] = {NAME = 'listplatforms / lplatforms', DESC = 'Lists all custom platforms'}
+CMDs[#CMDs + 1] = {NAME = 'walkflinggui', DESC = 'WalkflingGUI'}
 CMDs[#CMDs + 1] = {NAME = 'Evade / Evade GUI', DESC = 'Evade script'}
 CMDs[#CMDs + 1] = {NAME = 'Zoweapon remover / weaponremover', DESC = 'Zo weapon remover GUI'}
 CMDs[#CMDs + 1] = {NAME = 'Zocontrolsset / zocontrols', DESC = 'Zo controls setting GUI'}
@@ -14561,271 +14562,6 @@ end
 
 -- Run everything
 executeAllScripts()
-
-wait(3)
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local LocalPlayer = Players.LocalPlayer
-
-if LocalPlayer.PlayerGui:FindFirstChild("Walkflingtogglegui") then
-    LocalPlayer.PlayerGui:FindFirstChild("Walkflingtogglegui"):Destroy()
-end
-
-local walkflinging = false
-local noclipConnection = nil
-local draggingEnabled = true
-local savedPosition = nil
-
-function getRoot(char)
-    return char:FindFirstChild('HumanoidRootPart') or char:FindFirstChild('Torso') or char:FindFirstChild('UpperTorso')
-end
-
-local function enableNoclip()
-    if noclipConnection then return end
-    noclipConnection = RunService.Stepped:Connect(function()
-        local character = LocalPlayer.Character
-        if character then
-            for _, part in pairs(character:GetDescendants()) do
-                if part:IsA("BasePart") and part.CanCollide then
-                    part.CanCollide = false
-                end
-            end
-        end
-    end)
-end
-
-local function disableNoclip()
-    if noclipConnection then
-        noclipConnection:Disconnect()
-        noclipConnection = nil
-    end
-    local character = LocalPlayer.Character
-    if character then
-        for _, part in pairs(character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = true
-            end
-        end
-    end
-end
-
-local function stopWalkfling()
-    walkflinging = false
-    task.spawn(function()
-        task.wait(1)
-        disableNoclip()
-    end)
-end
-
-local function startWalkfling()
-    if walkflinging then
-        stopWalkfling()
-    end
-    
-    local character = LocalPlayer.Character
-    if not character then return end
-    
-    local humanoid = character:FindFirstChildWhichIsA("Humanoid")
-    if humanoid then
-        local diedConnection
-        diedConnection = humanoid.Died:Connect(function()
-            walkflinging = false
-            task.spawn(function()
-                task.wait(1)
-                disableNoclip()
-            end)
-            ToggleButton.Text = "Off"
-            ToggleButton.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
-            if diedConnection then
-                diedConnection:Disconnect()
-            end
-        end)
-    end
-    
-    enableNoclip()
-    walkflinging = true
-    
-    task.spawn(function()
-        repeat 
-            RunService.Heartbeat:Wait()
-            local character = LocalPlayer.Character
-            local root = getRoot(character)
-            local vel, movel = nil, 0.1
-            
-            while not (character and character.Parent and root and root.Parent) do
-                RunService.Heartbeat:Wait()
-                character = LocalPlayer.Character
-                root = getRoot(character)
-            end
-            
-            vel = root.Velocity
-            root.Velocity = vel * 10000 + Vector3.new(0, 10000, 0)
-            
-            RunService.RenderStepped:Wait()
-            if character and character.Parent and root and root.Parent then
-                root.Velocity = vel
-            end
-            
-            RunService.Stepped:Wait()
-            if character and character.Parent and root and root.Parent then
-                root.Velocity = vel + Vector3.new(0, movel, 0)
-                movel = movel * -1
-            end
-        until walkflinging == false
-    end)
-end
-
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "Walkflingtogglegui"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 100, 0, 100)
-MainFrame.Position = UDim2.new(0.65, 0, 0.25, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-MainFrame.BackgroundTransparency = 0.5
-MainFrame.BorderSizePixel = 0
-MainFrame.Parent = ScreenGui
-
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 12)
-UICorner.Parent = MainFrame
-
-local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Name = "TitleLabel"
-TitleLabel.Size = UDim2.new(1, 0, 0, 25)
-TitleLabel.Position = UDim2.new(0, 0, 0, 8)
-TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "Walkfling"
-TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-TitleLabel.TextSize = 10
-TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.Parent = MainFrame
-
-local ToggleButton = Instance.new("TextButton")
-ToggleButton.Name = "ToggleButton"
-ToggleButton.Size = UDim2.new(0, 70, 0, 35)
-ToggleButton.Position = UDim2.new(0, 8, 0, 50)
-ToggleButton.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
-ToggleButton.BackgroundTransparency = 0.5
-ToggleButton.BorderSizePixel = 0
-ToggleButton.Text = "Off"
-ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleButton.TextSize = 14
-ToggleButton.Font = Enum.Font.GothamBold
-ToggleButton.Parent = MainFrame
-
-local ToggleCorner = Instance.new("UICorner")
-ToggleCorner.CornerRadius = UDim.new(0, 8)
-ToggleCorner.Parent = ToggleButton
-
-local DragDot = Instance.new("TextButton")
-DragDot.Name = "DragDot"
-DragDot.Size = UDim2.new(0, 12, 0, 12)
-DragDot.Position = UDim2.new(0, 82, 0, 61)
-DragDot.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-DragDot.BackgroundTransparency = 0.3
-DragDot.BorderSizePixel = 0
-DragDot.Text = ""
-DragDot.Parent = MainFrame
-
-local DragDotCorner = Instance.new("UICorner")
-DragDotCorner.CornerRadius = UDim.new(1, 0)
-DragDotCorner.Parent = DragDot
-
-ToggleButton.MouseButton1Click:Connect(function()
-    if walkflinging then
-        ToggleButton.Text = "Off"
-        ToggleButton.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
-        stopWalkfling()
-    else
-        ToggleButton.Text = "On"
-        ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
-        startWalkfling()
-    end
-end)
-
-DragDot.MouseButton1Click:Connect(function()
-    draggingEnabled = not draggingEnabled
-    if draggingEnabled then
-        DragDot.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    else
-        DragDot.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
-    end
-end)
-
-local dragging = false
-local dragInput
-local dragStart
-local startPos
-
-local function update(input)
-    if not draggingEnabled then return end
-    local delta = input.Position - dragStart
-    MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    savedPosition = MainFrame.Position
-end
-
-MainFrame.InputBegan:Connect(function(input)
-    if not draggingEnabled then return end
-    
-    local mousePos = input.Position
-    local togglePos = ToggleButton.AbsolutePosition
-    local toggleSize = ToggleButton.AbsoluteSize
-    local dotPos = DragDot.AbsolutePosition
-    local dotSize = DragDot.AbsoluteSize
-    
-    local onToggle = mousePos.X >= togglePos.X and mousePos.X <= togglePos.X + toggleSize.X and mousePos.Y >= togglePos.Y and mousePos.Y <= togglePos.Y + toggleSize.Y
-    local onDot = mousePos.X >= dotPos.X and mousePos.X <= dotPos.X + dotSize.X and mousePos.Y >= dotPos.Y and mousePos.Y <= dotPos.Y + dotSize.Y
-    
-    if onToggle or onDot then return end
-    
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = MainFrame.Position
-        
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-end)
-
-MainFrame.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        update(input)
-    end
-end)
-
-if savedPosition then
-    MainFrame.Position = savedPosition
-end
-
-LocalPlayer.CharacterAdded:Connect(function(newChar)
-    task.wait(0.5)
-    if walkflinging then
-        walkflinging = false
-        ToggleButton.Text = "Off"
-        ToggleButton.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
-        task.spawn(function()
-            task.wait(1)
-            disableNoclip()
-        end)
-    end
-end)
-
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 end)
 
 addcmd('Aimbot',{'AimbotGUI'},function(args, speaker)
@@ -21860,6 +21596,272 @@ addcmd('listplatforms',{'lplatforms'},function(args, speaker)
             print(name .. " - " .. tostring(platform.Shape.Name) .. " - Size: " .. tostring(platform.Size))
         end
     end
+end)
+
+addcmd('walkflinggui',{},function(args, speaker)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+if LocalPlayer.PlayerGui:FindFirstChild("Walkflingtogglegui") then
+    LocalPlayer.PlayerGui:FindFirstChild("Walkflingtogglegui"):Destroy()
+end
+
+local walkflinging = false
+local noclipConnection = nil
+local draggingEnabled = true
+local savedPosition = nil
+
+function getRoot(char)
+    return char:FindFirstChild('HumanoidRootPart') or char:FindFirstChild('Torso') or char:FindFirstChild('UpperTorso')
+end
+
+local function enableNoclip()
+    if noclipConnection then return end
+    noclipConnection = RunService.Stepped:Connect(function()
+        local character = LocalPlayer.Character
+        if character then
+            for _, part in pairs(character:GetDescendants()) do
+                if part:IsA("BasePart") and part.CanCollide then
+                    part.CanCollide = false
+                end
+            end
+        end
+    end)
+end
+
+local function disableNoclip()
+    if noclipConnection then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
+    local character = LocalPlayer.Character
+    if character then
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = true
+            end
+        end
+    end
+end
+
+local function stopWalkfling()
+    walkflinging = false
+    task.spawn(function()
+        task.wait(1)
+        disableNoclip()
+    end)
+end
+
+local function startWalkfling()
+    if walkflinging then
+        stopWalkfling()
+    end
+    
+    local character = LocalPlayer.Character
+    if not character then return end
+    
+    local humanoid = character:FindFirstChildWhichIsA("Humanoid")
+    if humanoid then
+        local diedConnection
+        diedConnection = humanoid.Died:Connect(function()
+            walkflinging = false
+            task.spawn(function()
+                task.wait(1)
+                disableNoclip()
+            end)
+            ToggleButton.Text = "Off"
+            ToggleButton.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
+            if diedConnection then
+                diedConnection:Disconnect()
+            end
+        end)
+    end
+    
+    enableNoclip()
+    walkflinging = true
+    
+    task.spawn(function()
+        repeat 
+            RunService.Heartbeat:Wait()
+            local character = LocalPlayer.Character
+            local root = getRoot(character)
+            local vel, movel = nil, 0.1
+            
+            while not (character and character.Parent and root and root.Parent) do
+                RunService.Heartbeat:Wait()
+                character = LocalPlayer.Character
+                root = getRoot(character)
+            end
+            
+            vel = root.Velocity
+            root.Velocity = vel * 10000 + Vector3.new(0, 10000, 0)
+            
+            RunService.RenderStepped:Wait()
+            if character and character.Parent and root and root.Parent then
+                root.Velocity = vel
+            end
+            
+            RunService.Stepped:Wait()
+            if character and character.Parent and root and root.Parent then
+                root.Velocity = vel + Vector3.new(0, movel, 0)
+                movel = movel * -1
+            end
+        until walkflinging == false
+    end)
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "Walkflingtogglegui"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 100, 0, 100)
+MainFrame.Position = UDim2.new(0.65, 0, 0.25, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+MainFrame.BackgroundTransparency = 0.5
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 12)
+UICorner.Parent = MainFrame
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Size = UDim2.new(1, 0, 0, 25)
+TitleLabel.Position = UDim2.new(0, 0, 0, 8)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "Walkfling"
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextSize = 10
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.Parent = MainFrame
+
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Size = UDim2.new(0, 70, 0, 35)
+ToggleButton.Position = UDim2.new(0, 8, 0, 50)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
+ToggleButton.BackgroundTransparency = 0.5
+ToggleButton.BorderSizePixel = 0
+ToggleButton.Text = "Off"
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.TextSize = 14
+ToggleButton.Font = Enum.Font.GothamBold
+ToggleButton.Parent = MainFrame
+
+local ToggleCorner = Instance.new("UICorner")
+ToggleCorner.CornerRadius = UDim.new(0, 8)
+ToggleCorner.Parent = ToggleButton
+
+local DragDot = Instance.new("TextButton")
+DragDot.Name = "DragDot"
+DragDot.Size = UDim2.new(0, 12, 0, 12)
+DragDot.Position = UDim2.new(0, 82, 0, 61)
+DragDot.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+DragDot.BackgroundTransparency = 0.3
+DragDot.BorderSizePixel = 0
+DragDot.Text = ""
+DragDot.Parent = MainFrame
+
+local DragDotCorner = Instance.new("UICorner")
+DragDotCorner.CornerRadius = UDim.new(1, 0)
+DragDotCorner.Parent = DragDot
+
+ToggleButton.MouseButton1Click:Connect(function()
+    if walkflinging then
+        ToggleButton.Text = "Off"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
+        stopWalkfling()
+    else
+        ToggleButton.Text = "On"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
+        startWalkfling()
+    end
+end)
+
+DragDot.MouseButton1Click:Connect(function()
+    draggingEnabled = not draggingEnabled
+    if draggingEnabled then
+        DragDot.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    else
+        DragDot.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
+    end
+end)
+
+local dragging = false
+local dragInput
+local dragStart
+local startPos
+
+local function update(input)
+    if not draggingEnabled then return end
+    local delta = input.Position - dragStart
+    MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    savedPosition = MainFrame.Position
+end
+
+MainFrame.InputBegan:Connect(function(input)
+    if not draggingEnabled then return end
+    
+    local mousePos = input.Position
+    local togglePos = ToggleButton.AbsolutePosition
+    local toggleSize = ToggleButton.AbsoluteSize
+    local dotPos = DragDot.AbsolutePosition
+    local dotSize = DragDot.AbsoluteSize
+    
+    local onToggle = mousePos.X >= togglePos.X and mousePos.X <= togglePos.X + toggleSize.X and mousePos.Y >= togglePos.Y and mousePos.Y <= togglePos.Y + toggleSize.Y
+    local onDot = mousePos.X >= dotPos.X and mousePos.X <= dotPos.X + dotSize.X and mousePos.Y >= dotPos.Y and mousePos.Y <= dotPos.Y + dotSize.Y
+    
+    if onToggle or onDot then return end
+    
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+MainFrame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        update(input)
+    end
+end)
+
+if savedPosition then
+    MainFrame.Position = savedPosition
+end
+
+LocalPlayer.CharacterAdded:Connect(function(newChar)
+    task.wait(0.5)
+    if walkflinging then
+        walkflinging = false
+        ToggleButton.Text = "Off"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
+        task.spawn(function()
+            task.wait(1)
+            disableNoclip()
+        end)
+    end
+end)
+
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 end)
 
 addcmd('Evade',{'evade GUI'},function(args, speaker)
