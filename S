@@ -21234,7 +21234,7 @@ local function stopWalkFlingAura()
     notify("Walk Fling Aura", "Disabled")
 end
 
-addcmd('wfaura',{'walkflingaura'},function(args, speaker)
+addcmd('Walkfaura',{'wfa'},function(args, speaker)
     local radius = args[1] and tonumber(args[1]) or 10
     startWalkFlingAura(radius)
 end)
@@ -21243,7 +21243,7 @@ addcmd('unwalkflingaura',{'unwfaura'},function(args, speaker)
     stopWalkFlingAura()
 end)
 
-addcmd('Walkfaura',{'wfa'},function(args, speaker)
+addcmd('walkflingauravis',{'wfauravis'},function(args, speaker)
     if not walkflingaura then
         notify("Walk Fling Aura", "Aura not active! Start it first with ;walkflingaura")
         return
