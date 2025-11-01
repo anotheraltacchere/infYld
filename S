@@ -4368,7 +4368,7 @@ CMDs[#CMDs + 1] = {NAME = 'AuraCraft', DESC = 'Aura craft game GUI'}
 CMDs[#CMDs + 1] = {NAME = 'ShiftlockGUI / Shiftlock', DESC = 'Shiftlock GUI'}
 CMDs[#CMDs + 1] = {NAME = 'wave', DESC = 'wave emote'}
 CMDs[#CMDs + 1] = {NAME = 'zoanim / zoanimgui', DESC = 'animation gui for zo'}
-CMDs[#CMDs + 1] = {NAME = 'flingaura [radius]', DESC = 'Enables walk fling aura with specified radius'}
+CMDs[#CMDs + 1] = {NAME = 'walkflingaura / wfaura [radius]', DESC = 'Enables walk fling aura with specified radius'}
 CMDs[#CMDs + 1] = {NAME = 'unwalkflingaura / unwfaura', DESC = 'Disables walk fling aura'}
 CMDs[#CMDs + 1] = {NAME = 'walkflingauravis / wfauravis', DESC = 'Enables walk fling aura visualization'}
 CMDs[#CMDs + 1] = {NAME = 'unwalkflingauravis / unwfauravis', DESC = 'Disables walk fling aura visualization'}
@@ -21097,7 +21097,7 @@ local function wfDisableVisualization()
     end
 end
 
-local function startWalkFlingAura(radius)
+local function startWalkFlingAura(radius, speaker)
     if walkflingaura then
         notify("Walk Fling Aura", "Already active!")
         return
@@ -21120,13 +21120,13 @@ local function startWalkFlingAura(radius)
     if humanoid then
         humanoid.Died:Connect(function()
             walkflingaura = false
-            wfDisableNoclip()
+            wfDisableNoclip(speaker)
             wfDisableVisualization()
         end)
     end
     
-    wfEnableNoclip()
-    wfEnableVisualization()
+    wfEnableNoclip(speaker)
+    wfEnableVisualization(speaker)
     
     walkflingaura = true
     wfIsAttacking = false
@@ -21173,7 +21173,7 @@ local function startWalkFlingAura(radius)
             end
             
             if not wfIsAttacking then
-                local closestTarget = getClosestTargetInRadius(root.Position, wfAuraRadius)
+                local closestTarget = getClosestTargetInRadius(root.Position, wfAuraRadius, speaker)
                 
                 if closestTarget then
                     wfIsAttacking = true
@@ -21214,12 +21214,12 @@ local function startWalkFlingAura(radius)
             end
         end
         
-        wfDisableNoclip()
+        wfDisableNoclip(speaker)
         wfDisableVisualization()
     end)
 end
 
-local function stopWalkFlingAura()
+local function stopWalkFlingAura(speaker)
     if not walkflingaura then
         notify("Walk Fling Aura", "Not active!")
         return
@@ -21228,13 +21228,13 @@ local function stopWalkFlingAura()
     walkflingaura = false
     wfIsAttacking = false
     wfSavedPosition = nil
-    wfDisableNoclip()
+    wfDisableNoclip(speaker)
     wfDisableVisualization()
     
     notify("Walk Fling Aura", "Disabled")
 end
 
-addcmd('flingaura',{},function(args, speaker)
+addcmd('walkflingaura',{'wfaura'},function(args, speaker)
     local radius = args[1] and tonumber(args[1]) or 10
     startWalkFlingAura(radius)
 end)
