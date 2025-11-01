@@ -4374,6 +4374,9 @@ CMDs[#CMDs + 1] = {NAME = 'walkflingauravis / wfauravis', DESC = 'Enables walk f
 CMDs[#CMDs + 1] = {NAME = 'unwalkflingauravis / unwfauravis', DESC = 'Disables walk fling aura visualization'}
 CMDs[#CMDs + 1] = {NAME = 'walkflingauratrans / wfauratrans [transparency]', DESC = 'Sets walk fling aura transparency (0-1)'}
 CMDs[#CMDs + 1] = {NAME = 'walkflingauracolor / wfauracolor [r] [g] [b]', DESC = 'Sets walk fling aura color (RGB 0-255)'}
+CMDs[#CMDs + 1] = {NAME = 'voidtp / void', DESC = 'Teleports you to the void'}
+CMDs[#CMDs + 1] = {NAME = 'voidback / undovoid', DESC = 'Returns you from the void to saved position'}
+CMDs[#CMDs + 1] = {NAME = 'voidpos [x] [y] [z]', DESC = 'Sets custom void teleport position'}
 CMDs[#CMDs + 1] = {NAME = 'Evade / Evade GUI', DESC = 'Evade script'}
 CMDs[#CMDs + 1] = {NAME = 'Zoweapon remover / weaponremover', DESC = 'Zo weapon remover GUI'}
 CMDs[#CMDs + 1] = {NAME = 'Zocontrolsset / zocontrols', DESC = 'Zo controls setting GUI'}
@@ -20882,7 +20885,6 @@ enableDragging(minimizeButton, function(pos)
     guiState.minimizeButtonPosition = pos
 end)
 
--- Function to load animations for current character
 local function loadAnimationsForCharacter(character)
     local humanoid = character:WaitForChild("Humanoid", 10)
     if not humanoid then return end
@@ -20952,12 +20954,10 @@ local function setupCharacter()
     end
 end
 
--- Handle respawns
 player.CharacterAdded:Connect(function(character)
     loadAnimationsForCharacter(character)
 end)
 
--- Initial setup
 setupCharacter()
 end)
 
@@ -20971,8 +20971,6 @@ local wfAuraBall = nil
 local wfVisualizationConnection = nil
 local wfAuraTransparency = 0.8
 local wfAuraColor = Color3.fromRGB(0, 0, 0)
-
--- Walk Fling Aura Helper Functions (REPLACE ALL HELPER FUNCTIONS)
 
 local function getClosestTargetInRadius(fromPosition, radius, speaker)
     local closestTarget = nil
@@ -21236,8 +21234,6 @@ local function stopWalkFlingAura(speaker)
     notify("Walk Fling Aura", "Disabled")
 end
 
--- Walk Fling Aura Commands (REPLACE ALL ADDCMD BLOCKS)
-
 addcmd('walkflingaura',{'wfaura'},function(args, speaker)
     local radius = args[1] and tonumber(args[1]) or 10
     startWalkFlingAura(radius, speaker)
@@ -21295,6 +21291,79 @@ addcmd('walkflingauracolor',{'wfauracolor'},function(args, speaker)
     wfAuraColor = Color3.fromRGB(r, g, b)
     wfUpdateVisualizationColor()
     notify("Walk Fling Aura", "Color updated to RGB(" .. r .. ", " .. g .. ", " .. b .. ")")
+end)
+
+local savedVoidPosition = nil
+local customVoidY = -497
+
+local function teleportCharacter(character, targetCFrame)
+    local root = getRoot(character)
+    
+    if root then
+        local success = pcall(function()
+            root.CFrame = targetCFrame
+        end)
+        
+        if success then
+            return true
+        end
+    end
+    
+    if character.PrimaryPart then
+        local success = pcall(function()
+            character:SetPrimaryPartCFrame(targetCFrame)
+        end)
+        
+        if success then
+            return true
+        end
+    end
+    
+    if root then
+        local success = pcall(function()
+            character.PrimaryPart = root
+            character:SetPrimaryPartCFrame(targetCFrame)
+        end)
+        
+        if success then
+            return true
+        end
+    end
+    
+    return false
+end
+
+addcmd('voidtp',{'void'},function(args, speaker)
+    local character = speaker.Character
+    if not character then return end
+    
+    local root = getRoot(character)
+    if not root then return end
+    
+    savedVoidPosition = root.Position
+    
+    local voidCFrame = CFrame.new(root.Position.X, customVoidY, root.Position.Z)
+    teleportCharacter(character, voidCFrame)
+end)
+
+addcmd('voidback',{'undovoid'},function(args, speaker)
+    if not savedVoidPosition then return end
+    
+    local character = speaker.Character
+    if not character then return end
+    
+    local voidBackCFrame = CFrame.new(savedVoidPosition)
+    teleportCharacter(character, voidBackCFrame)
+end)
+
+addcmd('voidpos',{},function(args, speaker)
+    local x = args[1] and tonumber(args[1])
+    local y = args[2] and tonumber(args[2])
+    local z = args[3] and tonumber(args[3])
+    
+    if not (x and y and z) then return end
+    
+    customVoidY = y
 end)
 
 addcmd('Evade',{'evade GUI'},function(args, speaker)
