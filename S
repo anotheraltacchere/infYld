@@ -4368,7 +4368,7 @@ CMDs[#CMDs + 1] = {NAME = 'AuraCraft', DESC = 'Aura craft game GUI'}
 CMDs[#CMDs + 1] = {NAME = 'ShiftlockGUI / Shiftlock', DESC = 'Shiftlock GUI'}
 CMDs[#CMDs + 1] = {NAME = 'wave', DESC = 'wave emote'}
 CMDs[#CMDs + 1] = {NAME = 'zoanim / zoanimgui', DESC = 'animation gui for zo'}
-CMDs[#CMDs + 1] = {NAME = 'walkflingaura / wfaura [radius]', DESC = 'Enables walk fling aura with specified radius'}
+CMDs[#CMDs + 1] = {NAME = 'wfaura / walkflingaura [radius]', DESC = 'Enables walk fling aura with specified radius'}
 CMDs[#CMDs + 1] = {NAME = 'unwalkflingaura / unwfaura', DESC = 'Disables walk fling aura'}
 CMDs[#CMDs + 1] = {NAME = 'walkflingauravis / wfauravis', DESC = 'Enables walk fling aura visualization'}
 CMDs[#CMDs + 1] = {NAME = 'unwalkflingauravis / unwfauravis', DESC = 'Disables walk fling aura visualization'}
