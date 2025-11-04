@@ -4387,6 +4387,7 @@ CMDs[#CMDs + 1] = {NAME = 'platformtrans [name] [transparency]', DESC = 'Sets pl
 CMDs[#CMDs + 1] = {NAME = 'platformcolor [name] [r] [g] [b]', DESC = 'Sets platform color (RGB 0-255)'}
 CMDs[#CMDs + 1] = {NAME = 'listplatforms / lplatforms', DESC = 'Lists all custom platforms'}
 CMDs[#CMDs + 1] = {NAME = 'walkflinggui', DESC = 'WalkflingGUI'}
+CMDs[#CMDs + 1] = {NAME = 'updinfo / updateinfo', DESC = 'Shows update information'}
 CMDs[#CMDs + 1] = {NAME = 'Evade / Evade GUI', DESC = 'Evade script'}
 CMDs[#CMDs + 1] = {NAME = 'Zoweapon remover / weaponremover', DESC = 'Zo weapon remover GUI'}
 CMDs[#CMDs + 1] = {NAME = 'Zocontrolsset / zocontrols', DESC = 'Zo controls setting GUI'}
@@ -21862,6 +21863,201 @@ LocalPlayer.CharacterAdded:Connect(function(newChar)
 end)
 
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end)
+
+addcmd('updinfo',{'updateinfo'},function(args,speaker)
+local updates = {
+"[Updinfo / Updateinfo]",
+"[Walkflinggui]",
+"[walkfling aura]",
+"[voidTP]",
+"[platformtransparency [name] [transparency]]",
+"[platformremove [name]]",
+"[platformme [name] [size]]",
+"[platform [name] [x,y,z] [size]]",
+"[zoanim]",
+"[E wave emote]",
+"[Shiftlock]",
+"[Aura craft]",
+"[Print]",
+"[Tell friends/showfriends]",
+"[Dex plus plus]",
+"[Hide prompts]",
+"[Gameplay paused fixing]",
+"[Show chat gui]",
+"[Zo combat assist and AP]",
+"[Aimbot/AimbotGUI]",
+}
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local function randomString()
+local length = math.random(10,20)
+local array = {}
+for i = 1,length do
+array[i] = string.char(math.random(32,126))
+end
+return table.concat(array)
+end
+local function dragGUI(gui)
+local dragging
+local dragInput
+local dragStart
+local startPos
+local function update(input)
+local delta = input.Position - dragStart
+gui.Position = UDim2.new(startPos.X.Scale,startPos.X.Offset + delta.X,startPos.Y.Scale,startPos.Y.Offset + delta.Y)
+end
+gui.InputBegan:Connect(function(input)
+if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+dragging = true
+dragStart = input.Position
+startPos = gui.Position
+input.Changed:Connect(function()
+if input.UserInputState == Enum.UserInputState.End then
+dragging = false
+end
+end)
+end
+end)
+gui.InputChanged:Connect(function(input)
+if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+dragInput = input
+end
+end)
+UserInputService.InputChanged:Connect(function(input)
+if input == dragInput and dragging then
+update(input)
+end
+end)
+end
+local ScaledHolder = Instance.new("ScreenGui")
+ScaledHolder.Name = randomString()
+ScaledHolder.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScaledHolder.ResetOnSpawn = false
+ScaledHolder.IgnoreGuiInset = true
+ScaledHolder.Parent = PlayerGui
+local updateHeight = 18
+local headerHeight = 30
+local totalContentHeight = headerHeight + (#updates * updateHeight) + 10
+local main = Instance.new("Frame")
+main.Name = randomString()
+main.BackgroundColor3 = Color3.fromRGB(36,36,37)
+main.BackgroundTransparency = 1
+main.BorderSizePixel = 0
+main.Position = UDim2.new(0.5,-250,0,-500)
+main.Size = UDim2.new(0,500,0,320)
+main.ZIndex = 10
+main.Parent = ScaledHolder
+local topBar = Instance.new("Frame")
+topBar.Name = "TopBar"
+topBar.BackgroundColor3 = Color3.fromRGB(46,46,47)
+topBar.BorderSizePixel = 0
+topBar.Size = UDim2.new(1,0,0,20)
+topBar.ZIndex = 10
+topBar.Parent = main
+local title = Instance.new("TextLabel")
+title.Name = "Title"
+title.BackgroundTransparency = 1
+title.Size = UDim2.new(1,0,0.95,0)
+title.Font = Enum.Font.SourceSans
+title.Text = "Update Info"
+title.TextColor3 = Color3.new(1,1,1)
+title.TextSize = 14
+title.ZIndex = 10
+title.Parent = topBar
+local closeButton = Instance.new("TextButton")
+closeButton.Name = "Close"
+closeButton.BackgroundTransparency = 1
+closeButton.Position = UDim2.new(1,-20,0,0)
+closeButton.Size = UDim2.new(0,20,0,20)
+closeButton.Text = ""
+closeButton.ZIndex = 10
+closeButton.Parent = topBar
+local closeIcon = Instance.new("ImageLabel")
+closeIcon.BackgroundTransparency = 1
+closeIcon.Position = UDim2.new(0,5,0,5)
+closeIcon.Size = UDim2.new(0,10,0,10)
+closeIcon.Image = "rbxassetid://5054663650"
+closeIcon.ZIndex = 10
+closeIcon.Parent = closeButton
+local content = Instance.new("Frame")
+content.Name = "Content"
+content.BackgroundColor3 = Color3.fromRGB(36,36,37)
+content.BorderSizePixel = 0
+content.Position = UDim2.new(0,0,0,20)
+content.Size = UDim2.new(1,0,0,300)
+content.ZIndex = 10
+content.Parent = main
+local scrollFrame = Instance.new("ScrollingFrame")
+scrollFrame.Name = "List"
+scrollFrame.BackgroundColor3 = Color3.fromRGB(36,36,37)
+scrollFrame.BackgroundTransparency = 1
+scrollFrame.BorderSizePixel = 0
+scrollFrame.Size = UDim2.new(1,0,1,0)
+scrollFrame.CanvasSize = UDim2.new(0,0,0,totalContentHeight)
+scrollFrame.ScrollBarThickness = 8
+scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(78,78,79)
+scrollFrame.BottomImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+scrollFrame.TopImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+scrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+scrollFrame.ZIndex = 10
+scrollFrame.Parent = content
+local section = Instance.new("Frame")
+section.Name = "Section"
+section.BackgroundTransparency = 1
+section.Size = UDim2.new(1,0,0,totalContentHeight)
+section.ZIndex = 10
+section.Parent = scrollFrame
+local header = Instance.new("TextLabel")
+header.Name = "Header"
+header.BackgroundTransparency = 1
+header.Position = UDim2.new(0,8,0,5)
+header.Size = UDim2.new(1,-8,0,20)
+header.Font = Enum.Font.SourceSansBold
+header.Text = "Recent Updates"
+header.TextColor3 = Color3.new(1,1,1)
+header.TextSize = 20
+header.TextXAlignment = Enum.TextXAlignment.Left
+header.ZIndex = 10
+header.Parent = section
+local updatesContainer = Instance.new("Frame")
+updatesContainer.Name = "Updates"
+updatesContainer.BackgroundTransparency = 1
+updatesContainer.Position = UDim2.new(0,8,0,30)
+updatesContainer.Size = UDim2.new(1,-16,0,totalContentHeight - 30)
+updatesContainer.ZIndex = 10
+updatesContainer.Parent = section
+local listLayout = Instance.new("UIListLayout")
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.Padding = UDim.new(0,0)
+listLayout.Parent = updatesContainer
+for i,updateText in ipairs(updates) do
+local updateFrame = Instance.new("Frame")
+updateFrame.Name = "Update"
+updateFrame.BackgroundTransparency = 1
+updateFrame.Size = UDim2.new(1,0,0,updateHeight)
+updateFrame.ZIndex = 10
+updateFrame.Parent = updatesContainer
+local updateLabel = Instance.new("TextLabel")
+updateLabel.Name = "UpdateText"
+updateLabel.BackgroundTransparency = 1
+updateLabel.Size = UDim2.new(1,0,1,0)
+updateLabel.Font = Enum.Font.SourceSans
+updateLabel.TextSize = 14
+updateLabel.Text = updateText
+updateLabel.TextColor3 = Color3.new(1,1,1)
+updateLabel.TextXAlignment = Enum.TextXAlignment.Left
+updateLabel.TextWrapped = true
+updateLabel.ZIndex = 10
+updateLabel.Parent = updateFrame
+end
+closeButton.MouseButton1Click:Connect(function()
+main:TweenPosition(UDim2.new(0.5,-250,0,-500),"InOut","Quart",0.5,true,nil)
+end)
+dragGUI(main)
+main:TweenPosition(UDim2.new(0.5,-250,0.5,-150),"InOut","Quart",0.5,true,nil)
 end)
 
 addcmd('Evade',{'evade GUI'},function(args, speaker)
