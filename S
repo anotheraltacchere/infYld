@@ -4388,6 +4388,7 @@ CMDs[#CMDs + 1] = {NAME = 'platformcolor [name] [r] [g] [b]', DESC = 'Sets platf
 CMDs[#CMDs + 1] = {NAME = 'listplatforms / lplatforms', DESC = 'Lists all custom platforms'}
 CMDs[#CMDs + 1] = {NAME = 'walkflinggui', DESC = 'WalkflingGUI'}
 CMDs[#CMDs + 1] = {NAME = 'updinfo / updateinfo', DESC = 'Shows update information'}
+CMDs[#CMDs + 1] = {NAME = 'savetxt / txt [title] [content]', DESC = 'Save a text file to executor workspace'}
 CMDs[#CMDs + 1] = {NAME = 'Evade / Evade GUI', DESC = 'Evade script'}
 CMDs[#CMDs + 1] = {NAME = 'Zoweapon remover / weaponremover', DESC = 'Zo weapon remover GUI'}
 CMDs[#CMDs + 1] = {NAME = 'Zocontrolsset / zocontrols', DESC = 'Zo controls setting GUI'}
@@ -22064,6 +22065,39 @@ main:TweenPosition(UDim2.new(0.5,-250,0,-500),"InOut","Quart",0.5,true,nil)
 end)
 dragGUI(main)
 main:TweenPosition(UDim2.new(0.5,-250,0.5,-150),"InOut","Quart",0.5,true,nil)
+end)
+
+addcmd('savetxt',{'txt'},function(args, speaker)
+    if #args < 2 then
+        print("Error: Please provide both title and content")
+        print("Usage: :savetxt [title] [content]")
+        return
+    end
+    
+    local title = args[1]
+    table.remove(args, 1)
+    local content = table.concat(args, " ")
+    
+    local folderName = "IY Saved Txts"
+    
+    if not isfolder(folderName) then
+        makefolder(folderName)
+        print("Created folder: " .. folderName)
+    end
+    
+    local finalTitle = title
+    local counter = 1
+    local filePath = folderName .. "/" .. finalTitle .. ".txt"
+    
+    while isfile(filePath) do
+        finalTitle = title .. " (" .. counter .. ")"
+        filePath = folderName .. "/" .. finalTitle .. ".txt"
+        counter = counter + 1
+    end
+    
+    writefile(filePath, content)
+    print("Saved: " .. finalTitle .. ".txt")
+    print("Content: " .. content)
 end)
 
 addcmd('Evade',{'evade GUI'},function(args, speaker)
