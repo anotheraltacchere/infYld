@@ -4390,6 +4390,7 @@ CMDs[#CMDs + 1] = {NAME = 'walkflinggui', DESC = 'WalkflingGUI'}
 CMDs[#CMDs + 1] = {NAME = 'updinfo / updateinfo', DESC = 'Shows update information'}
 CMDs[#CMDs + 1] = {NAME = 'savetxt / txt [title] [content]', DESC = 'Save a text file to executor workspace'}
 CMDs[#CMDs + 1] = {NAME = 'readtxt / txtopen [title]', DESC = 'Open and view a saved text file'}
+CMDs[#CMDs + 1] = {NAME = 'txtlist / txts', DESC = 'View list of all saved text files'}
 CMDs[#CMDs + 1] = {NAME = 'Evade / Evade GUI', DESC = 'Evade script'}
 CMDs[#CMDs + 1] = {NAME = 'Zoweapon remover / weaponremover', DESC = 'Zo weapon remover GUI'}
 CMDs[#CMDs + 1] = {NAME = 'Zocontrolsset / zocontrols', DESC = 'Zo controls setting GUI'}
@@ -22296,6 +22297,281 @@ addcmd('readtxt',{'txtopen'},function(args, speaker)
     
     copyButton.MouseButton1Click:Connect(function()
         setclipboard(fileContent)
+    end)
+    
+    closeButton.MouseButton1Click:Connect(function()
+        main:TweenPosition(UDim2.new(0.5,-250,0,-500),"InOut","Quart",0.5,true,nil)
+        wait(0.5)
+        ScaledHolder:Destroy()
+    end)
+    
+    dragGUI(main)
+    main:TweenPosition(UDim2.new(0.5,-250,0.5,-160),"InOut","Quart",0.5,true,nil)
+end)
+
+addcmd('txtlist',{'txts'},function(args, speaker)
+    local folderName = "IY Saved Txts"
+    
+    if not isfolder(folderName) then
+        notify("Text List", "No saved text files found")
+        return
+    end
+    
+    local files = listfiles(folderName)
+    
+    if #files == 0 then
+        notify("Text List", "No saved text files found")
+        return
+    end
+    
+    local fileData = {}
+    for _, filePath in pairs(files) do
+        local fileName = filePath:match("([^/\\]+)$")
+        table.insert(fileData, {path = filePath, name = fileName})
+    end
+    
+    table.sort(fileData, function(a, b)
+        return a.path > b.path
+    end)
+    
+    local Players = game:GetService("Players")
+    local UserInputService = game:GetService("UserInputService")
+    local LocalPlayer = Players.LocalPlayer
+    local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+    
+    local function randomString()
+        local length = math.random(10,20)
+        local array = {}
+        for i = 1,length do
+            array[i] = string.char(math.random(32,126))
+        end
+        return table.concat(array)
+    end
+    
+    local function dragGUI(gui)
+        local dragging
+        local dragInput
+        local dragStart
+        local startPos
+        local function update(input)
+            local delta = input.Position - dragStart
+            gui.Position = UDim2.new(startPos.X.Scale,startPos.X.Offset + delta.X,startPos.Y.Scale,startPos.Y.Offset + delta.Y)
+        end
+        gui.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                dragStart = input.Position
+                startPos = gui.Position
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        dragging = false
+                    end
+                end)
+            end
+        end)
+        gui.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                dragInput = input
+            end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if input == dragInput and dragging then
+                update(input)
+            end
+        end)
+    end
+    
+    local ScaledHolder = Instance.new("ScreenGui")
+    ScaledHolder.Name = randomString()
+    ScaledHolder.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    ScaledHolder.ResetOnSpawn = false
+    ScaledHolder.IgnoreGuiInset = true
+    ScaledHolder.Parent = PlayerGui
+    
+    local main = Instance.new("Frame")
+    main.Name = randomString()
+    main.BackgroundColor3 = Color3.fromRGB(36,36,37)
+    main.BackgroundTransparency = 1
+    main.BorderSizePixel = 0
+    main.Position = UDim2.new(0.5,-250,0,-500)
+    main.Size = UDim2.new(0,500,0,320)
+    main.ZIndex = 10
+    main.Parent = ScaledHolder
+    
+    local topBar = Instance.new("Frame")
+    topBar.Name = "TopBar"
+    topBar.BackgroundColor3 = Color3.fromRGB(46,46,47)
+    topBar.BorderSizePixel = 0
+    topBar.Size = UDim2.new(1,0,0,20)
+    topBar.ZIndex = 10
+    topBar.Parent = main
+    
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.BackgroundTransparency = 1
+    title.Size = UDim2.new(1,-60,0.95,0)
+    title.Font = Enum.Font.SourceSans
+    title.Text = "IY Txt List"
+    title.TextColor3 = Color3.new(1,1,1)
+    title.TextSize = 14
+    title.ZIndex = 10
+    title.Parent = topBar
+    
+    local backButton = Instance.new("TextButton")
+    backButton.Name = "Back"
+    backButton.BackgroundTransparency = 0.5
+    backButton.BackgroundColor3 = Color3.fromRGB(60,60,60)
+    backButton.Position = UDim2.new(1,-60,0,0)
+    backButton.Size = UDim2.new(0,20,0,20)
+    backButton.Text = "←"
+    backButton.TextSize = 14
+    backButton.ZIndex = 10
+    backButton.Visible = false
+    backButton.Parent = topBar
+    
+    local copyButton = Instance.new("TextButton")
+    copyButton.Name = "Copy"
+    copyButton.BackgroundTransparency = 0.5
+    copyButton.BackgroundColor3 = Color3.fromRGB(60,60,60)
+    copyButton.Position = UDim2.new(1,-40,0,0)
+    copyButton.Size = UDim2.new(0,20,0,20)
+    copyButton.Text = "📋"
+    copyButton.TextSize = 12
+    copyButton.ZIndex = 10
+    copyButton.Visible = false
+    copyButton.Parent = topBar
+    
+    local closeButton = Instance.new("TextButton")
+    closeButton.Name = "Close"
+    closeButton.BackgroundTransparency = 1
+    closeButton.Position = UDim2.new(1,-20,0,0)
+    closeButton.Size = UDim2.new(0,20,0,20)
+    closeButton.Text = ""
+    closeButton.ZIndex = 10
+    closeButton.Parent = topBar
+    
+    local closeIcon = Instance.new("ImageLabel")
+    closeIcon.BackgroundTransparency = 1
+    closeIcon.Position = UDim2.new(0,5,0,5)
+    closeIcon.Size = UDim2.new(0,10,0,10)
+    closeIcon.Image = "rbxassetid://5054663650"
+    closeIcon.ZIndex = 10
+    closeIcon.Parent = closeButton
+    
+    local content = Instance.new("Frame")
+    content.Name = "Content"
+    content.BackgroundColor3 = Color3.fromRGB(36,36,37)
+    content.BorderSizePixel = 0
+    content.Position = UDim2.new(0,0,0,20)
+    content.Size = UDim2.new(1,0,0,300)
+    content.ZIndex = 10
+    content.Parent = main
+    
+    local listScrollFrame = Instance.new("ScrollingFrame")
+    listScrollFrame.Name = "ListScroll"
+    listScrollFrame.BackgroundColor3 = Color3.fromRGB(36,36,37)
+    listScrollFrame.BackgroundTransparency = 1
+    listScrollFrame.BorderSizePixel = 0
+    listScrollFrame.Size = UDim2.new(1,0,1,0)
+    listScrollFrame.CanvasSize = UDim2.new(0,0,0,0)
+    listScrollFrame.ScrollBarThickness = 8
+    listScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(78,78,79)
+    listScrollFrame.BottomImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+    listScrollFrame.TopImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+    listScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+    listScrollFrame.ZIndex = 10
+    listScrollFrame.Parent = content
+    
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.Padding = UDim.new(0,2)
+    listLayout.Parent = listScrollFrame
+    
+    local fileViewScrollFrame = Instance.new("ScrollingFrame")
+    fileViewScrollFrame.Name = "FileViewScroll"
+    fileViewScrollFrame.BackgroundColor3 = Color3.fromRGB(36,36,37)
+    fileViewScrollFrame.BackgroundTransparency = 1
+    fileViewScrollFrame.BorderSizePixel = 0
+    fileViewScrollFrame.Size = UDim2.new(1,0,1,0)
+    fileViewScrollFrame.CanvasSize = UDim2.new(0,0,0,0)
+    fileViewScrollFrame.ScrollBarThickness = 8
+    fileViewScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(78,78,79)
+    fileViewScrollFrame.BottomImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+    fileViewScrollFrame.TopImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+    fileViewScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+    fileViewScrollFrame.ZIndex = 10
+    fileViewScrollFrame.Visible = false
+    fileViewScrollFrame.Parent = content
+    
+    local fileContentLabel = Instance.new("TextLabel")
+    fileContentLabel.Name = "FileContent"
+    fileContentLabel.BackgroundTransparency = 1
+    fileContentLabel.Position = UDim2.new(0,10,0,10)
+    fileContentLabel.Size = UDim2.new(1,-20,1,-20)
+    fileContentLabel.Font = Enum.Font.SourceSans
+    fileContentLabel.Text = ""
+    fileContentLabel.TextColor3 = Color3.new(1,1,1)
+    fileContentLabel.TextSize = 14
+    fileContentLabel.TextXAlignment = Enum.TextXAlignment.Left
+    fileContentLabel.TextYAlignment = Enum.TextYAlignment.Top
+    fileContentLabel.TextWrapped = true
+    fileContentLabel.ZIndex = 10
+    fileContentLabel.Parent = fileViewScrollFrame
+    
+    local currentFileContent = ""
+    
+    for i, fileInfo in ipairs(fileData) do
+        local fileButton = Instance.new("TextButton")
+        fileButton.Name = "FileBtn"
+        fileButton.BackgroundColor3 = Color3.fromRGB(50,50,50)
+        fileButton.BorderSizePixel = 0
+        fileButton.Size = UDim2.new(1,-10,0,25)
+        fileButton.Font = Enum.Font.SourceSans
+        fileButton.Text = fileInfo.name
+        fileButton.TextColor3 = Color3.new(1,1,1)
+        fileButton.TextSize = 13
+        fileButton.TextXAlignment = Enum.TextXAlignment.Left
+        fileButton.ZIndex = 10
+        fileButton.Parent = listScrollFrame
+        
+        local padding = Instance.new("UIPadding")
+        padding.PaddingLeft = UDim.new(0,10)
+        padding.Parent = fileButton
+        
+        fileButton.MouseButton1Click:Connect(function()
+            local fileContent = readfile(fileInfo.path)
+            currentFileContent = fileContent
+            
+            title.Text = fileInfo.name
+            fileContentLabel.Text = fileContent
+            
+            listScrollFrame.Visible = false
+            fileViewScrollFrame.Visible = true
+            backButton.Visible = true
+            copyButton.Visible = true
+        end)
+    end
+    
+    listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        listScrollFrame.CanvasSize = UDim2.new(0,0,0,listLayout.AbsoluteContentSize.Y + 10)
+    end)
+    
+    fileContentLabel:GetPropertyChangedSignal("TextBounds"):Connect(function()
+        local textHeight = fileContentLabel.TextBounds.Y
+        fileViewScrollFrame.CanvasSize = UDim2.new(0,0,0,textHeight + 20)
+        fileContentLabel.Size = UDim2.new(1,-20,0,textHeight)
+    end)
+    
+    backButton.MouseButton1Click:Connect(function()
+        title.Text = "IY Txt List"
+        listScrollFrame.Visible = true
+        fileViewScrollFrame.Visible = false
+        backButton.Visible = false
+        copyButton.Visible = false
+    end)
+    
+    copyButton.MouseButton1Click:Connect(function()
+        setclipboard(currentFileContent)
     end)
     
     closeButton.MouseButton1Click:Connect(function()
