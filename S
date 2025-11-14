@@ -4391,6 +4391,7 @@ CMDs[#CMDs + 1] = {NAME = 'updinfo / updateinfo', DESC = 'Shows update informati
 CMDs[#CMDs + 1] = {NAME = 'savetxt / txt [title] [content]', DESC = 'Save a text file to executor workspace'}
 CMDs[#CMDs + 1] = {NAME = 'readtxt / txtopen [title]', DESC = 'Open and view a saved text file'}
 CMDs[#CMDs + 1] = {NAME = 'txtlist / txts', DESC = 'View list of all saved text files'}
+CMDs[#CMDs + 1] = {NAME = 'date / datetoday', DESC = 'Shows current date and time'}
 CMDs[#CMDs + 1] = {NAME = 'Evade / Evade GUI', DESC = 'Evade script'}
 CMDs[#CMDs + 1] = {NAME = 'Zoweapon remover / weaponremover', DESC = 'Zo weapon remover GUI'}
 CMDs[#CMDs + 1] = {NAME = 'Zocontrolsset / zocontrols', DESC = 'Zo controls setting GUI'}
@@ -21896,6 +21897,9 @@ local updates = {
 "[walkflingauracolor / wfauracolor]",
 "[voidpos]",
 "[Walkflinggui]",
+"[savetxt / txt]",
+"[readtxt / txtopen]",
+"[txtlist / txts]",
 }
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -22582,6 +22586,35 @@ addcmd('txtlist',{'txts'},function(args, speaker)
     
     dragGUI(main)
     main:TweenPosition(UDim2.new(0.5,-250,0.5,-160),"InOut","Quart",0.5,true,nil)
+end)
+
+addcmd('date',{'datetoday'},function(args, speaker)
+    local currentTime = os.date("*t")
+    
+    local days = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
+    local months = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"}
+    
+    local dayName = days[currentTime.wday]
+    local monthName = months[currentTime.month]
+    
+    local hour = currentTime.hour
+    local minute = currentTime.min
+    local ampm = "AM"
+    
+    if hour >= 12 then
+        ampm = "PM"
+        if hour > 12 then
+            hour = hour - 12
+        end
+    end
+    if hour == 0 then
+        hour = 12
+    end
+    
+    local timeString = string.format("%d:%02d %s", hour, minute, ampm)
+    local dateString = string.format("%s. %d %s, %d", dayName, currentTime.day, monthName, currentTime.year)
+    
+    notify(timeString, dateString)
 end)
 
 addcmd('Evade',{'evade GUI'},function(args, speaker)
