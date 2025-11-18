@@ -13809,6 +13809,97 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+-- RSpy System Variables
+local currentRemotePath = "k\239\188\151l\239\188\148ZO\227\129\158wat\227\129\155\227\129\134\227\129\160"
+local spiedRemotePath = nil
+local originalNamecall = nil
+local configFolder = "SamuraiGUIConfig"
+local configFile = "remote_config.txt"
+local rspyEnabled = false
+local rspyUpdateDelay = 12
+
+-- File system functions
+local function saveRemoteToConfig(remotePath)
+    if not isfolder then return end
+    if not writefile then return end
+    
+    if not isfolder(configFolder) then
+        makefolder(configFolder)
+    end
+    
+    writefile(configFolder .. "/" .. configFile, remotePath)
+end
+
+local function loadRemoteFromConfig()
+    if not isfile then return nil end
+    if not readfile then return nil end
+    
+    if isfile(configFolder .. "/" .. configFile) then
+        return readfile(configFolder .. "/" .. configFile)
+    end
+    
+    return nil
+end
+
+-- RSpy System
+local function setupRSpy()
+    if originalNamecall then return end
+    
+    local hookfunction = hookfunction
+    local getnamecallmethod = getnamecallmethod
+    
+    if not hookfunction or not getnamecallmethod then
+        warn("Executor doesn't support required functions - RSpy disabled")
+        return
+    end
+    
+    originalNamecall = hookfunction(getrawmetatable(game).__namecall, function(...)
+        local method = getnamecallmethod()
+        local self = ...
+        local args = {...}
+        
+        if method == "FireServer" and typeof(self) == "Instance" then
+            if #args >= 4 then
+                local arg1 = args[2]
+                local arg2 = args[3]
+                local arg3 = args[4]
+                
+                if typeof(arg1) == "string" and 
+                   (typeof(arg2) == "Instance") and 
+                   (typeof(arg3) == "Instance") and
+                   (arg1:find("HIT") or arg1:find("WOAH") or arg1:find("KICK")) then
+                    
+                    local remoteName = self.Name
+                    if remoteName ~= spiedRemotePath then
+                        spiedRemotePath = remoteName
+                        currentRemotePath = remoteName
+                        saveRemoteToConfig(remoteName)
+                        print("[RSpy] New remote detected:", remoteName)
+                    end
+                end
+            end
+        end
+        
+        return originalNamecall(...)
+    end)
+end
+
+local function destroyRSpy()
+    if originalNamecall then
+        hookfunction(getrawmetatable(game).__namecall, originalNamecall)
+        originalNamecall = nil
+    end
+end
+
+-- Initialize remote from config
+local function initializeRemote()
+    local savedRemote = loadRemoteFromConfig()
+    if savedRemote and savedRemote ~= "" then
+        currentRemotePath = savedRemote
+        print("[Config] Loaded remote:", savedRemote)
+    end
+end
+
 -- Combat tab implementation
 local combatTab = DrRayLibrary.newTab("Combat", "ImageIdHere")
 
@@ -13821,8 +13912,13 @@ local killAuraDelay = 1
 local kickAuraDelay = 1
 local whitelistedPlayers = {}
 local stunBaitEnabled = false
+local blockCheckEnabled = false
 local visualizeAuraEnabled = false
+local renderSteppedMethod = false
 local auraVisualization = nil
+local killAuraConnection = nil
+local visualizationConnection = nil
+local whitelistInputValue = ""
 
 -- Notification function
 local function notify(title, message, duration)
@@ -13832,6 +13928,29 @@ local function notify(title, message, duration)
         Duration = duration or 3
     })
 end
+
+-- RSpy Section
+combatTab.newLabel("RSpy System")
+
+combatTab.newButton("Toggle RSpy Method", "Enable/Disable remote spy", function()
+    rspyEnabled = not rspyEnabled
+    
+    if rspyEnabled then
+        setupRSpy()
+        notify("RSpy Activated", "Monitoring remotes for updates")
+    else
+        destroyRSpy()
+        notify("RSpy Deactivated", "Remote monitoring stopped")
+    end
+end)
+
+combatTab.newInput("RSpy Update Delay", "Set RSpy update delay (seconds)", function(value)
+    local newDelay = tonumber(value)
+    if newDelay and newDelay > 0 then
+        rspyUpdateDelay = newDelay
+        notify("RSpy Updated", "New delay: " .. rspyUpdateDelay .. " seconds")
+    end
+end)
 
 -- Killaura section
 combatTab.newLabel("Kill Aura")
@@ -13869,6 +13988,37 @@ local function isPlayerStunned(player)
     return false
 end
 
+-- Function to check if a player is blocking
+local function isPlayerBlocking(player)
+    local character = workspace:FindFirstChild(player.Name)
+    if character then
+        for _, item in pairs(character:GetChildren()) do
+            if item:IsA("Tool") and item:FindFirstChild("SkinName") then
+                local blockingValue = item:GetAttribute("Blocking")
+                if blockingValue ~= nil then
+                    return blockingValue
+                end
+            end
+        end
+    end
+    return false
+end
+
+-- Function to check if player is whitelisted
+local function isWhitelisted(playerName)
+    if #whitelistedPlayers == 0 then
+        return false
+    end
+    
+    local lowerName = playerName:lower()
+    for _, name in ipairs(whitelistedPlayers) do
+        if name == lowerName then
+            return true
+        end
+    end
+    return false
+end
+
 -- Function to perform attack
 local function performAttack(target)
     local localPlayer = Players.LocalPlayer
@@ -13880,27 +14030,41 @@ local function performAttack(target)
             [3] = target:FindFirstChild("Head") or target:FindFirstChild("HumanoidRootPart"),
             [4] = localChar.HumanoidRootPart.CFrame
         }
-        local attackRemote = ReplicatedStorage:WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO")
+        local attackRemote = ReplicatedStorage:FindFirstChild(currentRemotePath)
         if attackRemote then
             attackRemote:FireServer(unpack(args))
         end
     end
 end
 
--- Function to run the Kill Aura
-local function RunKillAura()
-    while killauraEnabled do
+-- Function to run the Kill Aura (Heartbeat method)
+local function RunKillAuraHeartbeat()
+    while killauraEnabled and not renderSteppedMethod do
         local localPlayer = Players.LocalPlayer
         local localChar = localPlayer.Character
         
         if localChar and localChar:FindFirstChild("HumanoidRootPart") then
             for _, player in ipairs(Players:GetPlayers()) do
-                if player ~= localPlayer and not table.find(whitelistedPlayers, player.Name:lower()) then
+                if player ~= localPlayer then
+                    -- Skip whitelist check if list is empty (optimization)
+                    if #whitelistedPlayers > 0 and isWhitelisted(player.Name) then
+                        continue
+                    end
+                    
                     local character = workspace:FindFirstChild(player.Name)
                     if character and character:FindFirstChild("HumanoidRootPart") then
                         local distance = (character.HumanoidRootPart.Position - localChar.HumanoidRootPart.Position).Magnitude
                         if distance <= killAuraDistance then
-                            local canAttack = not stunBaitEnabled or (stunBaitEnabled and isPlayerStunned(player))
+                            local canAttack = true
+                            
+                            if stunBaitEnabled and blockCheckEnabled then
+                                canAttack = isPlayerStunned(player) and not isPlayerBlocking(player)
+                            elseif stunBaitEnabled then
+                                canAttack = isPlayerStunned(player)
+                            elseif blockCheckEnabled then
+                                canAttack = not isPlayerBlocking(player)
+                            end
+                            
                             if canAttack then
                                 performAttack(character)
                             end
@@ -13913,8 +14077,59 @@ local function RunKillAura()
     end
 end
 
+-- Function to run the Kill Aura (RenderStepped method)
+local function RunKillAuraRenderStepped()
+    if killAuraConnection then
+        killAuraConnection:Disconnect()
+    end
+    
+    killAuraConnection = RunService.RenderStepped:Connect(function()
+        if not killauraEnabled or not renderSteppedMethod then
+            if killAuraConnection then
+                killAuraConnection:Disconnect()
+                killAuraConnection = nil
+            end
+            return
+        end
+        
+        local localPlayer = Players.LocalPlayer
+        local localChar = localPlayer.Character
+        
+        if localChar and localChar:FindFirstChild("HumanoidRootPart") then
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= localPlayer then
+                    -- Skip whitelist check if list is empty (optimization)
+                    if #whitelistedPlayers > 0 and isWhitelisted(player.Name) then
+                        continue
+                    end
+                    
+                    local character = workspace:FindFirstChild(player.Name)
+                    if character and character:FindFirstChild("HumanoidRootPart") then
+                        local distance = (character.HumanoidRootPart.Position - localChar.HumanoidRootPart.Position).Magnitude
+                        if distance <= killAuraDistance then
+                            local canAttack = true
+                            
+                            if stunBaitEnabled and blockCheckEnabled then
+                                canAttack = isPlayerStunned(player) and not isPlayerBlocking(player)
+                            elseif stunBaitEnabled then
+                                canAttack = isPlayerStunned(player)
+                            elseif blockCheckEnabled then
+                                canAttack = not isPlayerBlocking(player)
+                            end
+                            
+                            if canAttack then
+                                performAttack(character)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
 -- Function to update aura visualization
-local function updateAuraVisualization()
+function updateAuraVisualization()
     if auraVisualization then
         auraVisualization:Destroy()
     end
@@ -13924,28 +14139,53 @@ local function updateAuraVisualization()
         local character = localPlayer.Character
         if character and character:FindFirstChild("HumanoidRootPart") then
             auraVisualization = Instance.new("Part")
-            auraVisualization.Shape = Enum.PartType.Cylinder
-            auraVisualization.Size = Vector3.new(0.1, killAuraDistance * 2, killAuraDistance * 2)
-            auraVisualization.CFrame = character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 0) * CFrame.Angles(0, 0, math.pi/2)
+            auraVisualization.Shape = Enum.PartType.Ball
+            auraVisualization.Size = Vector3.new(killAuraDistance * 2, killAuraDistance * 2, killAuraDistance * 2)
+            auraVisualization.CFrame = character.HumanoidRootPart.CFrame
             auraVisualization.Anchored = true
             auraVisualization.CanCollide = false
             auraVisualization.Transparency = 0.7
             auraVisualization.BrickColor = BrickColor.new("Really red")
+            auraVisualization.Material = Enum.Material.Neon
             auraVisualization.Parent = workspace
         end
     end
 end
 
--- Function to continuously update aura visualization position
-local function updateAuraVisualizationPosition()
-    while visualizeAuraEnabled and auraVisualization do
+-- Function to update aura visualization position (Heartbeat)
+local function updateAuraVisualizationHeartbeat()
+    while visualizeAuraEnabled and auraVisualization and not renderSteppedMethod do
         local localPlayer = Players.LocalPlayer
         local character = localPlayer.Character
         if character and character:FindFirstChild("HumanoidRootPart") then
-            auraVisualization.CFrame = character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 0) * CFrame.Angles(0, 0, math.pi/2)
+            auraVisualization.CFrame = character.HumanoidRootPart.CFrame
         end
         RunService.Heartbeat:Wait()
     end
+end
+
+-- Function to update aura visualization position (RenderStepped)
+local function updateAuraVisualizationRenderStepped()
+    if visualizationConnection then
+        visualizationConnection:Disconnect()
+    end
+    
+    visualizationConnection = RunService.RenderStepped:Connect(function()
+        if not visualizeAuraEnabled or not auraVisualization or not renderSteppedMethod then
+            if visualizationConnection then
+                visualizationConnection:Disconnect()
+                visualizationConnection = nil
+            end
+            return
+        end
+        
+        local localPlayer = Players.LocalPlayer
+        local character = localPlayer.Character
+        if character and character:FindFirstChild("HumanoidRootPart") then
+            auraVisualization.CFrame = character.HumanoidRootPart.CFrame
+            auraVisualization.Size = Vector3.new(killAuraDistance * 2, killAuraDistance * 2, killAuraDistance * 2)
+        end
+    end)
 end
 
 -- Kill Aura toggle
@@ -13953,19 +14193,68 @@ combatTab.newButton("Toggle Kill Aura", "Enable/Disable Kill Aura", function()
     killauraEnabled = not killauraEnabled
     
     if killauraEnabled then
-        coroutine.wrap(RunKillAura)()
+        if renderSteppedMethod then
+            RunKillAuraRenderStepped()
+        else
+            coroutine.wrap(RunKillAuraHeartbeat)()
+        end
+    else
+        if killAuraConnection then
+            killAuraConnection:Disconnect()
+            killAuraConnection = nil
+        end
     end
     
     notify("Kill Aura " .. (killauraEnabled and "Activated" or "Deactivated"), 
            killauraEnabled and "Kill aura is now active" or "Kill aura has been disabled")
 end)
 
+-- RenderStepped Method toggle
+combatTab.newButton("Toggle RenderStepped Method", "Switch between Heartbeat and RenderStepped", function()
+    renderSteppedMethod = not renderSteppedMethod
+    
+    -- Restart kill aura if it's running
+    if killauraEnabled then
+        if killAuraConnection then
+            killAuraConnection:Disconnect()
+            killAuraConnection = nil
+        end
+        
+        if renderSteppedMethod then
+            RunKillAuraRenderStepped()
+        else
+            coroutine.wrap(RunKillAuraHeartbeat)()
+        end
+    end
+    
+    -- Restart visualization if it's running
+    if visualizeAuraEnabled then
+        if visualizationConnection then
+            visualizationConnection:Disconnect()
+            visualizationConnection = nil
+        end
+        
+        if renderSteppedMethod then
+            updateAuraVisualizationRenderStepped()
+        else
+            coroutine.wrap(updateAuraVisualizationHeartbeat)()
+        end
+    end
+    
+    notify("RenderStepped Method " .. (renderSteppedMethod and "Enabled" or "Disabled"), 
+           renderSteppedMethod and "Using RenderStepped for maximum speed" or "Using Heartbeat with delays")
+end)
+
 -- Update aura visualization on character added
 Players.LocalPlayer.CharacterAdded:Connect(function(char)
-    wait(1) -- Wait for the character to fully load
+    wait(1)
     updateAuraVisualization()
     if visualizeAuraEnabled then
-        coroutine.wrap(updateAuraVisualizationPosition)()
+        if renderSteppedMethod then
+            updateAuraVisualizationRenderStepped()
+        else
+            coroutine.wrap(updateAuraVisualizationHeartbeat)()
+        end
     end
 end)
 
@@ -14018,7 +14307,10 @@ combatTab.newButton("Toggle Kick Aura", "Enable/Disable Kick Aura", function()
                                         [3] = character,
                                         [4] = localChar.HumanoidRootPart.CFrame
                                     }
-                                    game:GetService("ReplicatedStorage"):WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO"):FireServer(unpack(args))
+                                    local kickRemote = ReplicatedStorage:FindFirstChild(currentRemotePath)
+                                    if kickRemote then
+                                        kickRemote:FireServer(unpack(args))
+                                    end
                                 end
                             end
                         end
@@ -14045,36 +14337,139 @@ end)
 -- Whitelist section
 combatTab.newLabel("Whitelist")
 
-local whitelistInput = combatTab.newInput("Whitelist Player", "Enter player name to whitelist", function(value)
-    -- This function will be called when the input is submitted
-end)
-
-combatTab.newButton("Add to Whitelist", "Add player to whitelist", function()
-    local playerName = whitelistInput:GetText()
-    if playerName and playerName ~= "" then
-        table.insert(whitelistedPlayers, playerName:lower())
-        notify("Whitelist Updated", playerName .. " added to whitelist")
+-- Function to find closest matching player
+local function findClosestPlayer(query)
+    if not query or query == "" then return nil end
+    
+    local lowerQuery = query:lower()
+    local bestMatch = nil
+    local bestScore = math.huge
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= Players.LocalPlayer then
+            local nameLower = player.Name:lower()
+            local displayLower = player.DisplayName:lower()
+            
+            -- Check for exact match first
+            if nameLower == lowerQuery or displayLower == lowerQuery then
+                return player
+            end
+            
+            -- Check for contains
+            if nameLower:find(lowerQuery) then
+                local score = #nameLower - #lowerQuery
+                if score < bestScore then
+                    bestScore = score
+                    bestMatch = player
+                end
+            elseif displayLower:find(lowerQuery) then
+                local score = #displayLower - #lowerQuery
+                if score < bestScore then
+                    bestScore = score
+                    bestMatch = player
+                end
+            end
+        end
     end
-end)
+    
+    return bestMatch
+end
 
-combatTab.newButton("Remove from Whitelist", "Remove player from whitelist", function()
-    local playerName = whitelistInput:GetText()
-    if playerName and playerName ~= "" then
-        for i, name in ipairs(whitelistedPlayers) do
-            if name:lower() == playerName:lower() then
-                table.remove(whitelistedPlayers, i)
-                notify("Whitelist Updated", playerName .. " removed from whitelist")
+-- Function to get actual player names from whitelist
+local function getWhitelistedNames()
+    local names = {}
+    for _, lowerName in ipairs(whitelistedPlayers) do
+        -- Find the actual player to get proper capitalization
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player.Name:lower() == lowerName then
+                table.insert(names, player.Name)
                 break
             end
         end
     end
+    return names
+end
+
+-- Function to update whitelist label
+local whitelistLabel = nil
+local function updateWhitelistLabel()
+    if whitelistLabel then
+        if #whitelistedPlayers == 0 then
+            whitelistLabel.Text = "Whitelisted: None"
+        else
+            local names = getWhitelistedNames()
+            whitelistLabel.Text = "Whitelisted: " .. table.concat(names, ", ")
+        end
+    end
+end
+
+combatTab.newInput("Whitelist Player", "Enter player name to whitelist", function(value)
+    whitelistInputValue = value
 end)
 
+combatTab.newButton("Add to Whitelist", "Add player to whitelist", function()
+    if whitelistInputValue and whitelistInputValue ~= "" then
+        local player = findClosestPlayer(whitelistInputValue)
+        if player then
+            local lowerName = player.Name:lower()
+            
+            -- Check if already whitelisted
+            if not isWhitelisted(player.Name) then
+                table.insert(whitelistedPlayers, lowerName)
+                notify("Whitelist Updated", player.Name .. " was added to whitelist")
+                updateWhitelistLabel()
+            else
+                notify("Already Whitelisted", player.Name .. " is already in whitelist")
+            end
+        else
+            notify("Player Not Found", "No player found matching: " .. whitelistInputValue)
+        end
+    end
+end)
+
+combatTab.newButton("Remove from Whitelist", "Remove player from whitelist", function()
+    if whitelistInputValue and whitelistInputValue ~= "" then
+        local player = findClosestPlayer(whitelistInputValue)
+        if player then
+            local lowerName = player.Name:lower()
+            
+            for i, name in ipairs(whitelistedPlayers) do
+                if name == lowerName then
+                    table.remove(whitelistedPlayers, i)
+                    notify("Whitelist Updated", player.Name .. " removed from whitelist")
+                    updateWhitelistLabel()
+                    return
+                end
+            end
+            
+            notify("Not Whitelisted", player.Name .. " is not in whitelist")
+        else
+            notify("Player Not Found", "No player found matching: " .. whitelistInputValue)
+        end
+    end
+end)
+
+combatTab.newButton("Remove All from Whitelist", "Clear entire whitelist", function()
+    whitelistedPlayers = {}
+    notify("Whitelist Cleared", "All players removed from whitelist")
+    updateWhitelistLabel()
+end)
+
+-- Create whitelist label
+whitelistLabel = combatTab.newLabel("Whitelisted: None")
+
 -- Stun Bait toggle
-combatTab.newButton("Toggle Stun Bait", "Only attack stunned players", function()
+combatTab.newButton("Toggle Stun Check", "Only attack stunned players", function()
     stunBaitEnabled = not stunBaitEnabled
-    notify("Stun Bait " .. (stunBaitEnabled and "Activated" or "Deactivated"), 
-           stunBaitEnabled and "Only attacking stunned players" or "Attacking all players in range")
+    notify("Stun Check " .. (stunBaitEnabled and "Enabled" or "Disabled"), 
+           stunBaitEnabled and "Only attacking stunned players" or "Stun check disabled")
+end)
+
+-- Block Check toggle
+combatTab.newButton("Toggle Block Check", "Only attack when target not blocking", function()
+    blockCheckEnabled = not blockCheckEnabled
+    notify("Block Check " .. (blockCheckEnabled and "Enabled" or "Disabled"), 
+           blockCheckEnabled and "Only attacking non-blocking players" or "Block check disabled")
 end)
 
 -- Kill Aura Visualize toggle
@@ -14082,7 +14477,16 @@ combatTab.newButton("Toggle Kill Aura Visualization", "Show kill aura range", fu
     visualizeAuraEnabled = not visualizeAuraEnabled
     updateAuraVisualization()
     if visualizeAuraEnabled then
-        coroutine.wrap(updateAuraVisualizationPosition)()
+        if renderSteppedMethod then
+            updateAuraVisualizationRenderStepped()
+        else
+            coroutine.wrap(updateAuraVisualizationHeartbeat)()
+        end
+    else
+        if visualizationConnection then
+            visualizationConnection:Disconnect()
+            visualizationConnection = nil
+        end
     end
     notify("Kill Aura Visualization " .. (visualizeAuraEnabled and "On" or "Off"), 
            visualizeAuraEnabled and "Showing kill aura range" or "Kill aura range hidden")
@@ -14102,10 +14506,10 @@ tab.newButton("Auto Hit Clan Guy", "Toggle Auto Hit Clan Guy", function()
     if clanHitEnabled then
         if clanHitLoop then clanHitLoop:Disconnect() end
         
-        local lastHitTime = tick() -- Track the time of the last hit
+        local lastHitTime = tick()
         clanHitLoop = RunService.Heartbeat:Connect(function()
             if tick() - lastHitTime >= clanHitDelay then
-                local remote = ReplicatedStorage:WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO")
+                local remote = ReplicatedStorage:FindFirstChild(currentRemotePath)
                 local localChar = Players.LocalPlayer.Character
                 if remote and localChar then
                     local weapon = localChar:FindFirstChild("<TN~!1>")
@@ -14117,7 +14521,7 @@ tab.newButton("Auto Hit Clan Guy", "Toggle Auto Hit Clan Guy", function()
                             [4] = CFrame.new(2905.097412109375, 224.10476684570312, -3835.6630859375, -0.5031031370162964, -1.0004535511143331e-07, -0.8642264008522034, -5.48595195937196e-08, 1, -8.382683347463171e-08, 0.8642264008522034, 5.237501543575718e-09, -0.5031031370162964)
                         }
                         remote:FireServer(unpack(args))
-                        lastHitTime = tick() -- Update the last hit time
+                        lastHitTime = tick()
                     end
                 end
             end
@@ -14137,40 +14541,39 @@ tab.newButton("Auto Hit Clan Guy", "Toggle Auto Hit Clan Guy", function()
 end)
 
 tab.newButton("Hit Bell", "Hit bell", function()
-
-local args = {
-    [1] = "WOAH YOU HIT SOMEONE!",
-    [2] = game:GetService("Players").LocalPlayer.Character:FindFirstChild("<TN~!1>"),
-    [3] = workspace.Ignore.BellModel.BellAttach.Bell,
-    [4] = CFrame.new(3489.572265625, 325.30877685546875, -3719.884765625, 0.19734840095043182, 1.221115297767028e-07, 0.9803333878517151, -4.488273219749317e-08, 1, -1.1552599232800276e-07, -0.9803333878517151, -2.120117237325303e-08, 0.19734840095043182)
-}
-
-game:GetService("ReplicatedStorage"):WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO"):FireServer(unpack(args))
-
+    local args = {
+        [1] = "WOAH YOU HIT SOMEONE!",
+        [2] = game:GetService("Players").LocalPlayer.Character:FindFirstChild("<TN~!1>"),
+        [3] = workspace.Ignore.BellModel.BellAttach.Bell,
+        [4] = CFrame.new(3489.572265625, 325.30877685546875, -3719.884765625, 0.19734840095043182, 1.221115297767028e-07, 0.9803333878517151, -4.488273219749317e-08, 1, -1.1552599232800276e-07, -0.9803333878517151, -2.120117237325303e-08, 0.19734840095043182)
+    }
+    local remote = ReplicatedStorage:FindFirstChild(currentRemotePath)
+    if remote then
+        remote:FireServer(unpack(args))
+    end
 end)
 
 tab.newButton("Hit Bong", "Hit Gong", function()
-local args = {
-    [1] = "WOAH YOU HIT SOMEONE!",
-    [2] = game:GetService("Players").LocalPlayer.Character:FindFirstChild("<TN~!1>"),
-    [3] = workspace.MainMapFolder.MainArea.Interactables.Gong.Gong,
-    [4] = CFrame.new(3230.12353515625, 211.27938842773438, -3970.89794921875, -0.5274049043655396, -0.00941790547221899, -0.849561870098114, -0.002879450796172023, 0.9999526143074036, -0.009297525510191917, 0.8496091961860657, -0.0024572887923568487, -0.5274070501327515)
-}
-
-game:GetService("ReplicatedStorage"):WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO"):FireServer(unpack(args))
-
+    local args = {
+        [1] = "WOAH YOU HIT SOMEONE!",
+        [2] = game:GetService("Players").LocalPlayer.Character:FindFirstChild("<TN~!1>"),
+        [3] = workspace.MainMapFolder.MainArea.Interactables.Gong.Gong,
+        [4] = CFrame.new(3230.12353515625, 211.27938842773438, -3970.89794921875, -0.5274049043655396, -0.00941790547221899, -0.849561870098114, -0.002879450796172023, 0.9999526143074036, -0.009297525510191917, 0.8496091961860657, -0.0024572887923568487, -0.5274070501327515)
+    }
+    local remote = ReplicatedStorage:FindFirstChild(currentRemotePath)
+    if remote then
+        remote:FireServer(unpack(args))
+    end
 end)
 
 local weaponTab = DrRayLibrary.newTab("Weapons", "ImageIdHere")
 
--- Weapon categories
 local weaponCategories = {
     {name = "Blades", weapons = {"Katana", "Naginata", "Tanto", "Odachi"}},
     {name = "Blunt", weapons = {"Kanabo", "Caestus"}},
     {name = "Special", weapons = {"Kusarigama", "Scythe"}}
 }
 
--- Create a label for each category and buttons for its weapons
 for _, category in ipairs(weaponCategories) do
     weaponTab.newLabel(category.name)
     
@@ -14191,18 +14594,12 @@ for _, category in ipairs(weaponCategories) do
     end
 end
 
--- Create a new tab for spam features
 local spamTab = DrRayLibrary.newTab("Spam", "ImageIdHere")
 
--- Variables for dog spam
+-- Dog spam
 local isDogSpamRunning = false
 local dogSpamDelay = 1
 
--- Variables for cat spam
-local isCatSpamRunning = false
-local catSpamDelay = 0.5
-
--- Create input for dog spam delay
 spamTab.newInput("Dog Spam Delay", "Set delay for dog spam (seconds)", function(value)
     local newDelay = tonumber(value)
     if newDelay and newDelay > 0 then
@@ -14210,7 +14607,6 @@ spamTab.newInput("Dog Spam Delay", "Set delay for dog spam (seconds)", function(
     end
 end)
 
--- Create toggle button for dog spam
 spamTab.newButton("Dog Sound Spam", "Toggle dog sound spam (equip weapon first)", function()
     isDogSpamRunning = not isDogSpamRunning
     
@@ -14224,8 +14620,11 @@ spamTab.newButton("Dog Sound Spam", "Toggle dog sound spam (equip weapon first)"
                     [4] = CFrame.new(3322.80322265625, 243.20310974121094, -4087.52001953125, -0.4447162449359894, -1.1065712612889911e-07, -0.8956714868545532, -2.0028368297175803e-08, 1, -1.1360211971123135e-07, 0.8956714868545532, -3.25818696467195e-08, -0.4447162449359894)
                 }
                 
-                for i = 1, 10 do
-                    game:GetService("ReplicatedStorage"):WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO"):FireServer(unpack(args))
+                local remote = ReplicatedStorage:FindFirstChild(currentRemotePath)
+                if remote then
+                    for i = 1, 10 do
+                        remote:FireServer(unpack(args))
+                    end
                 end
                 
                 wait(dogSpamDelay)
@@ -14246,10 +14645,12 @@ spamTab.newButton("Dog Sound Spam", "Toggle dog sound spam (equip weapon first)"
     end
 end)
 
--- Create a divider
+-- Cat spam
 spamTab.newLabel("Cat Spam")
 
--- Create input for cat spam delay
+local isCatSpamRunning = false
+local catSpamDelay = 0.5
+
 spamTab.newInput("Cat Spam Delay", "Set delay for cat spam (seconds)", function(value)
     local newDelay = tonumber(value)
     if newDelay and newDelay > 0 then
@@ -14257,7 +14658,6 @@ spamTab.newInput("Cat Spam Delay", "Set delay for cat spam (seconds)", function(
     end
 end)
 
--- Create toggle button for cat spam
 spamTab.newButton("Cat Sound Spam", "Toggle cat sound spam (equip weapon)", function()
     isCatSpamRunning = not isCatSpamRunning
     
@@ -14268,11 +14668,14 @@ spamTab.newButton("Cat Sound Spam", "Toggle cat sound spam (equip weapon)", func
                     [1] = "WOAH YOU HIT SOMEONE!",
                     [2] = game:GetService("Players").LocalPlayer.Character:FindFirstChild("<TN~!1>"),
                     [3] = workspace.MAP.TradingArea.jcat.node_id60,
-                    [4] = CFrame.new(3103.956298828125, 229.25205993652344, -3917.28564453125, 0.8770804405212402, -2.1043055298264335e-08, -0.4803435504436493, 9.51265910487109e-09, 1, -2.643876051422467e-08, 0.4803435504436493, 1.8619575214984252e-08, 0.8770804405212402)
+                    [4] = CFrame.new(3338.5390625, 275.41204833984375, -3563.173095703125, -0.9228560328483582, -1.8715212490860722e-08, 0.38514506816864014, -2.2837859603441757e-08, 1, -6.129753149508588e-09, -0.38514506816864014, -1.4452768759554147e-08, -0.9228560328483582)
                 }
                 
-                for i = 1, 6 do
-                    game:GetService("ReplicatedStorage"):WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO"):FireServer(unpack(args))
+                local remote = ReplicatedStorage:FindFirstChild(currentRemotePath)
+                if remote then
+                    for i = 1, 6 do
+                        remote:FireServer(unpack(args))
+                    end
                 end
                 
                 wait(catSpamDelay)
@@ -14290,6 +14693,129 @@ spamTab.newButton("Cat Sound Spam", "Toggle cat sound spam (equip weapon)", func
             Text = "Cat sound spam has been stopped",
             Duration = 3
         })
+    end
+end)
+
+-- Maxwell spam
+spamTab.newLabel("Maxwell")
+
+local isMaxwellSpamRunning = false
+local maxwellSpamDelay = 0.5
+
+spamTab.newInput("Maxwell Spam Delay", "Set delay for Maxwell spam (seconds)", function(value)
+    local newDelay = tonumber(value)
+    if newDelay and newDelay > 0 then
+        maxwellSpamDelay = newDelay
+    end
+end)
+
+spamTab.newButton("Maxwell Spam", "Toggle Maxwell spam", function()
+    isMaxwellSpamRunning = not isMaxwellSpamRunning
+    
+    if isMaxwellSpamRunning then
+        spawn(function()
+            while isMaxwellSpamRunning do
+                local args = {
+                    [1] = "WOAH YOU HIT SOMEONE!",
+                    [2] = game:GetService("Players").LocalPlayer.Character:FindFirstChild("<TN~!1>"),
+                    [3] = workspace:WaitForChild("Maxwell"):WaitForChild("maxwell"),
+                    [4] = CFrame.new(3368.491455078125, 259.7869567871094, -4002.685791015625, -0.7751067876815796, -4.000976971951786e-08, 0.6318302154541016, -1.9294470021691268e-08, 1, 3.9653837546893556e-08, -0.6318302154541016, 1.8545129876201827e-08, -0.7751067876815796)
+                }
+                
+                local remote = ReplicatedStorage:FindFirstChild(currentRemotePath)
+                if remote then
+                    remote:FireServer(unpack(args))
+                end
+                
+                wait(maxwellSpamDelay)
+            end
+        end)
+        
+        notify("Maxwell Spam Activated", "Maxwell spam is now active")
+    else
+        notify("Maxwell Spam Deactivated", "Maxwell spam has been stopped")
+    end
+end)
+
+-- Above Dojo Dog spam
+spamTab.newLabel("Above Dojo Dog")
+
+local isAboveDojoSpamRunning = false
+local aboveDojoSpamDelay = 0.5
+
+spamTab.newInput("Above Dojo Dog Delay", "Set delay for Above Dojo Dog spam (seconds)", function(value)
+    local newDelay = tonumber(value)
+    if newDelay and newDelay > 0 then
+        aboveDojoSpamDelay = newDelay
+    end
+end)
+
+spamTab.newButton("Above Dojo Dog Spam", "Toggle Above Dojo Dog spam", function()
+    isAboveDojoSpamRunning = not isAboveDojoSpamRunning
+    
+    if isAboveDojoSpamRunning then
+        spawn(function()
+            while isAboveDojoSpamRunning do
+                local args = {
+                    [1] = "WOAH YOU HIT SOMEONE!",
+                    [2] = game:GetService("Players").LocalPlayer.Character:FindFirstChild("<TN~!1>"),
+                    [3] = workspace:WaitForChild("mesh_id142"),
+                    [4] = CFrame.new(3217.089111328125, 278.12762451171875, -4129.1962890625, 0.5723732113838196, 3.2015510242899836e-08, -0.819993257522583, -4.343103654491642e-09, 1, 3.601204667802449e-08, 0.819993257522583, -1.7051014822300203e-08, 0.5723732113838196)
+                }
+                
+                local remote = ReplicatedStorage:FindFirstChild(currentRemotePath)
+                if remote then
+                    remote:FireServer(unpack(args))
+                end
+                
+                wait(aboveDojoSpamDelay)
+            end
+        end)
+        
+        notify("Above Dojo Dog Spam Activated", "Above Dojo Dog spam is now active")
+    else
+        notify("Above Dojo Dog Spam Deactivated", "Above Dojo Dog spam has been stopped")
+    end
+end)
+
+-- Hit Boxes spam
+spamTab.newLabel("Hit Boxes")
+
+local isHitBoxesSpamRunning = false
+local hitBoxesSpamDelay = 0.5
+
+spamTab.newInput("Hit Boxes Delay", "Set delay for Hit Boxes spam (seconds)", function(value)
+    local newDelay = tonumber(value)
+    if newDelay and newDelay > 0 then
+        hitBoxesSpamDelay = newDelay
+    end
+end)
+
+spamTab.newButton("Hit Boxes Spam", "Toggle Hit Boxes spam", function()
+    isHitBoxesSpamRunning = not isHitBoxesSpamRunning
+    
+    if isHitBoxesSpamRunning then
+        spawn(function()
+            while isHitBoxesSpamRunning do
+                local args = {
+                    [1] = "WOAH YOU HIT SOMEONE!",
+                    [2] = game:GetService("Players").LocalPlayer.Character:FindFirstChild("<TN~!1>"),
+                    [3] = workspace:WaitForChild("MAP"):WaitForChild("Interactables"):WaitForChild("Box"):WaitForChild("AlsoHittable"),
+                    [4] = CFrame.new(3199.705078125, 278.1379089355469, -4122.01708984375, -0.514572024345398, 5.7252659502182723e-08, 0.8574471473693848, 1.4385324043075798e-09, 1, -6.590776990833547e-08, -0.8574471473693848, -3.2680830486242485e-08, -0.514572024345398)
+                }
+                
+                local remote = ReplicatedStorage:FindFirstChild(currentRemotePath)
+                if remote then
+                    remote:FireServer(unpack(args))
+                end
+                
+                wait(hitBoxesSpamDelay)
+            end
+        end)
+        
+        notify("Hit Boxes Spam Activated", "Hit Boxes spam is now active")
+    else
+        notify("Hit Boxes Spam Deactivated", "Hit Boxes spam has been stopped")
     end
 end)
 
@@ -14314,7 +14840,7 @@ local function createTool(name, remoteArgs)
                 local localChar = Players.LocalPlayer.Character
                 if character and localChar then
                     local weapon = localChar:FindFirstChild("<TN~!1>")
-                    local remote = ReplicatedStorage:WaitForChild("j\239\188\145k\239\188\13853\226\128\139ZO")
+                    local remote = ReplicatedStorage:FindFirstChild(currentRemotePath)
                     if remote and weapon then
                         local args = {
                             [1] = remoteArgs[1],
@@ -14352,6 +14878,111 @@ tab.newButton("Kill Tool", "Toggle Kill Tool", function()
     toggleTool(kickTool)
 end)
 
+-- Instant Respawn Section
+tab.newLabel("Instant Respawn")
+
+local autoRespawnDelay = 0.1
+local autoRespawnOnDeathDelay = 0.1
+local autoRespawnOnDeathEnabled = false
+
+tab.newInput("Auto Respawn Delay", "Set delay for manual respawn (seconds)", function(value)
+    local newDelay = tonumber(value)
+    if newDelay and newDelay >= 0 then
+        autoRespawnDelay = newDelay
+    end
+end)
+
+tab.newButton("Auto Respawn", "Instant respawn (manual)", function()
+    wait(autoRespawnDelay)
+    local args = {
+        [1] = "RequestLeaveEvent"
+    }
+    game:GetService("ReplicatedStorage"):WaitForChild("\n\t"):FireServer(unpack(args))
+    notify("Respawning", "Respawn requested")
+end)
+
+tab.newInput("Auto Respawn On Death Delay", "Set delay for auto respawn on death (seconds)", function(value)
+    local newDelay = tonumber(value)
+    if newDelay and newDelay >= 0 then
+        autoRespawnOnDeathDelay = newDelay
+    end
+end)
+
+tab.newButton("Auto Respawn On Death", "Toggle auto respawn on death", function()
+    autoRespawnOnDeathEnabled = not autoRespawnOnDeathEnabled
+    
+    if autoRespawnOnDeathEnabled then
+        LocalPlayer.CharacterAdded:Connect(function(char)
+            if not autoRespawnOnDeathEnabled then return end
+            
+            local humanoid = char:WaitForChild("Humanoid")
+            humanoid.Died:Connect(function()
+                if autoRespawnOnDeathEnabled then
+                    wait(autoRespawnOnDeathDelay)
+                    local args = {
+                        [1] = "RequestLeaveEvent"
+                    }
+                    game:GetService("ReplicatedStorage"):WaitForChild("\n\t"):FireServer(unpack(args))
+                end
+            end)
+        end)
+        
+        notify("Auto Respawn On Death Enabled", "Will auto respawn on death")
+    else
+        notify("Auto Respawn On Death Disabled", "Auto respawn disabled")
+    end
+end)
+
+-- Hide Weapon Section
+tab.newLabel("Weapon Visibility")
+
+-- Function to find weapon in backpack or character
+local function findWeapon()
+    local weapon = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("<TN~!1>")
+    if weapon then
+        return weapon
+    end
+    
+    weapon = LocalPlayer.Backpack and LocalPlayer.Backpack:FindFirstChild("<TN~!1>")
+    if weapon then
+        return weapon
+    end
+    
+    return nil
+end
+
+tab.newButton("Show Weapon", "Make weapon visible", function()
+    local weapon = findWeapon()
+    if weapon then
+        local remote = weapon:FindFirstChild("ChangeFakeWeaponTransparency")
+        if remote then
+            local args = { [1] = true }
+            remote:FireServer(unpack(args))
+            notify("Weapon Visible", "Weapon is now visible")
+        else
+            notify("Error", "ChangeFakeWeaponTransparency not found")
+        end
+    else
+        notify("Error", "Weapon not found in backpack or character")
+    end
+end)
+
+tab.newButton("Hide Weapon", "Make weapon invisible", function()
+    local weapon = findWeapon()
+    if weapon then
+        local remote = weapon:FindFirstChild("ChangeFakeWeaponTransparency")
+        if remote then
+            local args = { [1] = false }
+            remote:FireServer(unpack(args))
+            notify("Weapon Hidden", "Weapon is now invisible")
+        else
+            notify("Error", "ChangeFakeWeaponTransparency not found")
+        end
+    else
+        notify("Error", "Weapon not found in backpack or character")
+    end
+end)
+
 tab.newButton("Simple Spy", "Enable Simple Spy", function()
     loadstring(game:HttpGet("https://raw.githubusercontent.com/REDzHUB/RS/main/SimpleSpyMobile"))()
 end)
@@ -14361,123 +14992,104 @@ tab.newButton("Chat Spy", "Enable No Chat Spy", function()
 end)
 
 tab.newButton("Auto Parry", "Auto Parry", function()
-loadstring(game:HttpGet(('https://raw.githubusercontent.com/Aidez/ZO/main/IM%20ZO%20HARD'),true))()
+    loadstring(game:HttpGet(('https://raw.githubusercontent.com/Aidez/ZO/main/IM%20ZO%20HARD'),true))()
 end)
 
 tab.newButton("Remove AP UI", "Remove AP UI", function()
-    -- First, check if the CoreGui service and the desired UI element exists
-local coreGui = game:GetService("CoreGui")
-local commandBar = coreGui:FindFirstChild("ScreenGui")
-
-if commandBar then
-    local bar = commandBar:FindFirstChild("CommandBar")
-    if bar then
-        bar:Destroy()
-        print("CommandBar destroyed.")
+    local coreGui = game:GetService("CoreGui")
+    local commandBar = coreGui:FindFirstChild("ScreenGui")
+    
+    if commandBar then
+        local bar = commandBar:FindFirstChild("CommandBar")
+        if bar then
+            bar:Destroy()
+            print("CommandBar destroyed.")
+        else
+            print("CommandBar not found.")
+        end
     else
-        print("CommandBar not found.")
+        print("ScreenGui not found in CoreGui.")
     end
-else
-    print("ScreenGui not found in CoreGui.")
-  end
 end)
 
 tab.newButton("Become Skeleton", "Become Skeleton", function()
-local player = game.Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
-
--- Save current coordinates
-local originalPosition = humanoidRootPart.CFrame
-print("Original Position: ", originalPosition)
-
--- Function to teleport to a specific position
-local function teleportToPosition(position)
-    local currentCharacter = player.Character
-    if currentCharacter then
-        local currentHumanoidRootPart = currentCharacter:FindFirstChild("HumanoidRootPart")
-        if currentHumanoidRootPart then
-            currentHumanoidRootPart.CFrame = position
+    local player = game.Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    
+    local originalPosition = humanoidRootPart.CFrame
+    print("Original Position: ", originalPosition)
+    
+    local function teleportToPosition(position)
+        local currentCharacter = player.Character
+        if currentCharacter then
+            local currentHumanoidRootPart = currentCharacter:FindFirstChild("HumanoidRootPart")
+            if currentHumanoidRootPart then
+                currentHumanoidRootPart.CFrame = position
+            end
         end
     end
-end
-
--- Teleport to the specified location
-teleportToPosition(game.Workspace.MainMapFolder.MainArea.EasterEggs.SkeletonTransform.grave2.CFrame)
-print("Teleported to grave2")
-
--- Wait for 0.8 seconds
-wait(0.8)
-
--- Become that idiot
-local prompt = workspace.MainMapFolder.MainArea.EasterEggs.SkeletonTransform.grave2.Transform.CustomPrompt
-prompt:InputHoldBegin()
-task.wait(prompt.HoldDuration)
-prompt:InputHoldEnd()
-
--- Wait for Gta 6
-wait(1)
-
--- Function to wait for character to respawn and then teleport
-local function waitForRespawnAndTeleport()
-    local newCharacter = player.Character or player.CharacterAdded:Wait()
-    newCharacter:WaitForChild("HumanoidRootPart")
-    teleportToPosition(originalPosition)
-    print("Teleported back to original position: ", originalPosition)
-end
-
--- Call the function to wait for respawn and teleport
-waitForRespawnAndTeleport()
-
+    
+    teleportToPosition(game.Workspace.MainMapFolder.MainArea.EasterEggs.SkeletonTransform.grave2.CFrame)
+    print("Teleported to grave2")
+    
+    wait(0.8)
+    
+    local prompt = workspace.MainMapFolder.MainArea.EasterEggs.SkeletonTransform.grave2.Transform.CustomPrompt
+    prompt:InputHoldBegin()
+    task.wait(prompt.HoldDuration)
+    prompt:InputHoldEnd()
+    
+    wait(1)
+    
+    local function waitForRespawnAndTeleport()
+        local newCharacter = player.Character or player.CharacterAdded:Wait()
+        newCharacter:WaitForChild("HumanoidRootPart")
+        teleportToPosition(originalPosition)
+        print("Teleported back to original position: ", originalPosition)
+    end
+    
+    waitForRespawnAndTeleport()
 end)
 
 tab.newButton("Become Lamp", "Become Lamp", function()
-local player = game.Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
-
--- Save current coordinates
-local originalPosition = humanoidRootPart.CFrame
-print("Original Position: ", originalPosition)
-
--- Function to teleport to a specific position
-local function teleportToPosition(position)
-    local currentCharacter = player.Character
-    if currentCharacter then
-        local currentHumanoidRootPart = currentCharacter:FindFirstChild("HumanoidRootPart")
-        if currentHumanoidRootPart then
-            currentHumanoidRootPart.CFrame = position
+    local player = game.Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    
+    local originalPosition = humanoidRootPart.CFrame
+    print("Original Position: ", originalPosition)
+    
+    local function teleportToPosition(position)
+        local currentCharacter = player.Character
+        if currentCharacter then
+            local currentHumanoidRootPart = currentCharacter:FindFirstChild("HumanoidRootPart")
+            if currentHumanoidRootPart then
+                currentHumanoidRootPart.CFrame = position
+            end
         end
     end
-end
-
--- Teleport to the specified location
-
-teleportToPosition(workspace.MainMapFolder.MainArea.Structures.Torii.CFrame)
-print("Teleported to LampMorph")
-
--- Wait for 0.8 seconds
-wait(0.8)
-
--- Spread the light without caring about bill
-local prompt = workspace.MainMapFolder.MainArea.EasterEggs.LampTransform.Part.Transform.CustomPrompt
-prompt:InputHoldBegin()
-task.wait(prompt.HoldDuration)
-prompt:InputHoldEnd()
-
--- Gta 6 releassd or not
-wait(1)
-
--- Function to wait for character to respawn and then teleport
-local function waitForRespawnAndTeleport()
-    local newCharacter = player.Character or player.CharacterAdded:Wait()
-    newCharacter:WaitForChild("HumanoidRootPart")
-    teleportToPosition(originalPosition)
-    print("Teleported back to original position: ", originalPosition)
-end
-
--- Call the function to wait for respawn and teleport
-waitForRespawnAndTeleport()
+    
+    teleportToPosition(workspace.MainMapFolder.MainArea.Structures.Torii.CFrame)
+    print("Teleported to LampMorph")
+    
+    wait(0.8)
+    
+    local prompt = workspace.MainMapFolder.MainArea.EasterEggs.LampTransform.Part.Transform.CustomPrompt
+    prompt:InputHoldBegin()
+    task.wait(prompt.HoldDuration)
+    prompt:InputHoldEnd()
+    
+    wait(1)
+    
+    local function waitForRespawnAndTeleport()
+        local newCharacter = player.Character or player.CharacterAdded:Wait()
+        newCharacter:WaitForChild("HumanoidRootPart")
+        teleportToPosition(originalPosition)
+        print("Teleported back to original position: ", originalPosition)
+    end
+    
+    waitForRespawnAndTeleport()
 end)
 
 local Players = game:GetService("Players")
@@ -14524,7 +15136,6 @@ tab.newButton("Toggle Jump Cooldown", "Enable/Disable Jump Cooldown Script", fun
     toggleScript("JumpCD", jumpCDEnabled)
 end)
 
--- Status indicators
 local statusLabel = tab.newLabel("Script Status:")
 
 local function updateStatus()
@@ -14536,10 +15147,8 @@ updateStatus()
 
 game.RunService.Heartbeat:Connect(updateStatus)
 
-while true do
-    updatePlayerList()
-    wait(0.1)
-end
+-- Initialize RSpy
+initializeRemote()
 ]]
 
 -- Execute all scripts
