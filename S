@@ -12867,7 +12867,10 @@ local settings = {
     useRandomDelay = false,
     guiLocked = false,
     rspyEnabled = false,
-    rspyUpdateDelay = 12
+    rspyUpdateDelay = 12,
+    gameFolderSpyEnabled = false,
+    gameFolderSpyDelay = 2,
+    overrideOtherConfigs = false
 }
 
 -- RSpy System Variables
@@ -12877,33 +12880,177 @@ local originalNamecall = nil
 local configFolder = "AutoBlockConfig"
 local configFile = "remote_config.txt"
 
+-- Other config folders
+local otherConfigFolders = {
+    "SamuraiGUIConfig",
+    "TargetTrackerConfig"
+}
+
 -- Track active loops to stop them when needed
 local activeLoops = {
     fixed = nil,
-    random = nil
+    random = nil,
+    gameFolderSpy = nil,
+    configMatcher = nil
 }
 
+-- Labels for real-time display
+local fileRemoteLabel = nil
+local gameValueLabel = nil
+local samuraiConfigLabel = nil
+local trackerConfigLabel = nil
+
 -- File system functions
-local function saveRemoteToConfig(remotePath)
-    if not isfolder then return end
+local function saveRemoteToConfig(remotePath, folderName)
     if not writefile then return end
     
-    if not isfolder(configFolder) then
-        makefolder(configFolder)
+    folderName = folderName or configFolder
+    
+    -- Only create folder for AutoBlockConfig
+    if folderName == configFolder then
+        if isfolder and not isfolder(folderName) then
+            makefolder(folderName)
+        end
     end
     
-    writefile(configFolder .. "/" .. configFile, remotePath)
+    -- Check if folder exists before writing (for other configs)
+    if folderName ~= configFolder then
+        if not isfolder or not isfolder(folderName) then
+            return -- Don't write if folder doesn't exist
+        end
+    end
+    
+    -- Write the file
+    writefile(folderName .. "/" .. configFile, remotePath)
 end
 
-local function loadRemoteFromConfig()
+local function loadRemoteFromConfig(folderName)
     if not isfile then return nil end
     if not readfile then return nil end
     
-    if isfile(configFolder .. "/" .. configFile) then
-        return readfile(configFolder .. "/" .. configFile)
+    folderName = folderName or configFolder
+    
+    if isfile(folderName .. "/" .. configFile) then
+        return readfile(folderName .. "/" .. configFile)
     end
     
     return nil
+end
+
+-- Function to get game folder value
+local function getGameFolderValue()
+    local success, value = pcall(function()
+        return replicatedStorage:FindFirstChild("AirDensityMapIdentifier")
+    end)
+    
+    if success and value and value.Value then
+        return value.Value
+    end
+    
+    return nil
+end
+
+-- Function to check and match configs
+local function checkAndMatchConfigs()
+    if not settings.overrideOtherConfigs then return end
+    
+    local autoBlockRemote = loadRemoteFromConfig(configFolder)
+    if not autoBlockRemote or autoBlockRemote == "" then return end
+    
+    -- Check and update each config folder
+    for _, folder in ipairs(otherConfigFolders) do
+        local otherRemote = loadRemoteFromConfig(folder)
+        
+        -- Only update if they don't match
+        if otherRemote ~= autoBlockRemote then
+            saveRemoteToConfig(autoBlockRemote, folder)
+        end
+    end
+end
+
+-- Function to update labels
+local function updateLabels()
+    if fileRemoteLabel then
+        local fileRemote = loadRemoteFromConfig(configFolder)
+        fileRemoteLabel.Text = "AutoBlock: " .. (fileRemote or "None")
+    end
+    
+    if gameValueLabel then
+        local gameValue = getGameFolderValue()
+        gameValueLabel.Text = "Game: " .. (gameValue or "None")
+    end
+    
+    if samuraiConfigLabel then
+        local samuraiRemote = loadRemoteFromConfig("SamuraiGUIConfig")
+        samuraiConfigLabel.Text = "Samurai: " .. (samuraiRemote or "File not found")
+    end
+    
+    if trackerConfigLabel then
+        local trackerRemote = loadRemoteFromConfig("TargetTrackerConfig")
+        trackerConfigLabel.Text = "Tracker: " .. (trackerRemote or "File not found")
+    end
+end
+
+-- Config Matcher Loop (runs independently)
+local function runConfigMatcherLoop()
+    if activeLoops.configMatcher then
+        activeLoops.configMatcher:Disconnect()
+        activeLoops.configMatcher = nil
+    end
+    
+    local thread = coroutine.create(function()
+        while settings.overrideOtherConfigs do
+            checkAndMatchConfigs()
+            
+            -- Use the delay of whichever method is active
+            local delay = 2
+            if settings.rspyEnabled then
+                delay = settings.rspyUpdateDelay
+            elseif settings.gameFolderSpyEnabled then
+                delay = settings.gameFolderSpyDelay
+            end
+            
+            wait(delay)
+        end
+    end)
+    
+    activeLoops.configMatcher = {
+        Disconnect = function()
+            coroutine.close(thread)
+        end
+    }
+    
+    coroutine.resume(thread)
+end
+
+-- Game Folder Spy Loop
+local function runGameFolderSpyLoop()
+    if activeLoops.gameFolderSpy then
+        activeLoops.gameFolderSpy:Disconnect()
+        activeLoops.gameFolderSpy = nil
+    end
+    
+    local thread = coroutine.create(function()
+        while settings.gameFolderSpyEnabled do
+            local gameValue = getGameFolderValue()
+            
+            if gameValue and gameValue ~= currentRemotePath then
+                currentRemotePath = gameValue
+                saveRemoteToConfig(gameValue, configFolder)
+                updateLabels()
+            end
+            
+            wait(settings.gameFolderSpyDelay)
+        end
+    end)
+    
+    activeLoops.gameFolderSpy = {
+        Disconnect = function()
+            coroutine.close(thread)
+        end
+    }
+    
+    coroutine.resume(thread)
 end
 
 -- RSpy System
@@ -12941,8 +13088,8 @@ local function setupRSpy()
                     if remoteName ~= spiedRemotePath then
                         spiedRemotePath = remoteName
                         currentRemotePath = remoteName
-                        saveRemoteToConfig(remoteName)
-                        print("[RSpy] New block remote detected:", remoteName)
+                        saveRemoteToConfig(remoteName, configFolder)
+                        updateLabels()
                     end
                 end
             end
@@ -12961,10 +13108,9 @@ end
 
 -- Initialize remote from config
 local function initializeRemote()
-    local savedRemote = loadRemoteFromConfig()
+    local savedRemote = loadRemoteFromConfig(configFolder)
     if savedRemote and savedRemote ~= "" then
         currentRemotePath = savedRemote
-        print("[Config] Loaded remote:", savedRemote)
     end
 end
 
@@ -13381,8 +13527,8 @@ local function createGui()
     -- Settings Panel
     local settingsPanel = Instance.new("Frame")
     settingsPanel.Name = "SettingsPanel"
-    settingsPanel.Size = UDim2.new(0, 250, 0, 150)
-    settingsPanel.Position = UDim2.new(0.5, -125, 0.3, 0)
+    settingsPanel.Size = UDim2.new(0, 280, 0, 220)
+    settingsPanel.Position = UDim2.new(0.5, -140, 0.3, 0)
     settingsPanel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     settingsPanel.BackgroundTransparency = 0.3
     settingsPanel.BorderSizePixel = 2
@@ -13416,7 +13562,7 @@ local function createGui()
     scrollFrame.BackgroundTransparency = 1
     scrollFrame.BorderSizePixel = 0
     scrollFrame.ScrollBarThickness = 6
-    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 150)
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 370)
     scrollFrame.Parent = settingsPanel
     
     local function createLabel(text, yPos)
@@ -13427,7 +13573,7 @@ local function createGui()
         label.Text = text
         label.TextColor3 = Color3.fromRGB(255, 255, 255)
         label.Font = Enum.Font.Gotham
-        label.TextSize = 13
+        label.TextSize = 12
         label.TextXAlignment = Enum.TextXAlignment.Left
         label.Parent = scrollFrame
         return label
@@ -13484,7 +13630,40 @@ local function createGui()
     
     createLabel("RSpy Update Delay (sec):", yOffset)
     local rspyDelayInput = createTextBox("RSpyDelayInput", yOffset, settings.rspyUpdateDelay)
+    yOffset = yOffset + 35
+    
+    createLabel("Game Folder Spy Method:", yOffset)
+    local gameFolderSpyToggle = createToggle("GameFolderSpyToggle", yOffset, settings.gameFolderSpyEnabled)
     yOffset = yOffset + 30
+    
+    createLabel("Game Folder Spy Delay (sec):", yOffset)
+    local gameFolderSpyDelayInput = createTextBox("GameFolderSpyDelayInput", yOffset, settings.gameFolderSpyDelay)
+    yOffset = yOffset + 35
+    
+    createLabel("Override Other 2 Configs:", yOffset)
+    local overrideToggle = createToggle("OverrideToggle", yOffset, settings.overrideOtherConfigs)
+    yOffset = yOffset + 35
+    
+    -- Real-time labels
+    fileRemoteLabel = createLabel("AutoBlock: " .. (loadRemoteFromConfig(configFolder) or "None"), yOffset)
+    fileRemoteLabel.TextSize = 11
+    fileRemoteLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
+    yOffset = yOffset + 25
+    
+    gameValueLabel = createLabel("Game: " .. (getGameFolderValue() or "None"), yOffset)
+    gameValueLabel.TextSize = 11
+    gameValueLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
+    yOffset = yOffset + 25
+    
+    samuraiConfigLabel = createLabel("Samurai: " .. (loadRemoteFromConfig("SamuraiGUIConfig") or "File not found"), yOffset)
+    samuraiConfigLabel.TextSize = 11
+    samuraiConfigLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
+    yOffset = yOffset + 25
+    
+    trackerConfigLabel = createLabel("Tracker: " .. (loadRemoteFromConfig("TargetTrackerConfig") or "File not found"), yOffset)
+    trackerConfigLabel.TextSize = 11
+    trackerConfigLabel.TextColor3 = Color3.fromRGB(255, 150, 200)
+    yOffset = yOffset + 25
     
     -- Make frame draggable (exclude interactive elements)
     makeDraggable(frame, {toggleButton, fixedDelayInput, randomToggle, minDelayInput, maxDelayInput, lockToggle, settingsToggle})
@@ -13508,6 +13687,16 @@ local function createGui()
         rspyToggle.BackgroundColor3 = settings.rspyEnabled and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
         
         if settings.rspyEnabled then
+            -- Disable game folder spy if RSpy is enabled
+            if settings.gameFolderSpyEnabled then
+                settings.gameFolderSpyEnabled = false
+                gameFolderSpyToggle.Text = "OFF"
+                gameFolderSpyToggle.BackgroundColor3 = Color3.fromRGB(60, 60, 65)
+                if activeLoops.gameFolderSpy then
+                    activeLoops.gameFolderSpy:Disconnect()
+                    activeLoops.gameFolderSpy = nil
+                end
+            end
             setupRSpy()
         else
             destroyRSpy()
@@ -13521,6 +13710,57 @@ local function createGui()
             settings.rspyUpdateDelay = value
         else
             rspyDelayInput.Text = tostring(settings.rspyUpdateDelay)
+        end
+    end)
+    
+    -- Game Folder Spy toggle
+    gameFolderSpyToggle.MouseButton1Click:Connect(function()
+        settings.gameFolderSpyEnabled = not settings.gameFolderSpyEnabled
+        gameFolderSpyToggle.Text = settings.gameFolderSpyEnabled and "ON" or "OFF"
+        gameFolderSpyToggle.BackgroundColor3 = settings.gameFolderSpyEnabled and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
+        
+        if settings.gameFolderSpyEnabled then
+            -- Disable RSpy if game folder spy is enabled
+            if settings.rspyEnabled then
+                settings.rspyEnabled = false
+                rspyToggle.Text = "OFF"
+                rspyToggle.BackgroundColor3 = Color3.fromRGB(60, 60, 65)
+                destroyRSpy()
+            end
+            runGameFolderSpyLoop()
+        else
+            if activeLoops.gameFolderSpy then
+                activeLoops.gameFolderSpy:Disconnect()
+                activeLoops.gameFolderSpy = nil
+            end
+        end
+    end)
+    
+    -- Game Folder Spy delay input
+    gameFolderSpyDelayInput.FocusLost:Connect(function()
+        local value = tonumber(gameFolderSpyDelayInput.Text)
+        if value and value > 0 then
+            settings.gameFolderSpyDelay = value
+        else
+            gameFolderSpyDelayInput.Text = tostring(settings.gameFolderSpyDelay)
+        end
+    end)
+    
+    -- Override toggle
+    overrideToggle.MouseButton1Click:Connect(function()
+        settings.overrideOtherConfigs = not settings.overrideOtherConfigs
+        overrideToggle.Text = settings.overrideOtherConfigs and "ON" or "OFF"
+        overrideToggle.BackgroundColor3 = settings.overrideOtherConfigs and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
+        
+        if settings.overrideOtherConfigs then
+            -- Start config matcher loop
+            runConfigMatcherLoop()
+        else
+            -- Stop config matcher loop
+            if activeLoops.configMatcher then
+                activeLoops.configMatcher:Disconnect()
+                activeLoops.configMatcher = nil
+            end
         end
     end)
     
@@ -13594,9 +13834,27 @@ local function createGui()
         end
     end)
     
+    -- Update labels periodically
+    spawn(function()
+        while true do
+            updateLabels()
+            wait(1)
+        end
+    end)
+    
     -- Start the loop if it was running before
     if settings.running then
         startBlockLoop()
+    end
+    
+    -- Start game folder spy if enabled
+    if settings.gameFolderSpyEnabled then
+        runGameFolderSpyLoop()
+    end
+    
+    -- Start config matcher if override is enabled
+    if settings.overrideOtherConfigs then
+        runConfigMatcherLoop()
     end
     
     return screenGui
@@ -13612,6 +13870,14 @@ player.CharacterAdded:Connect(function()
     
     if settings.running then
         startBlockLoop()
+    end
+    
+    if settings.gameFolderSpyEnabled then
+        runGameFolderSpyLoop()
+    end
+    
+    if settings.overrideOtherConfigs then
+        runConfigMatcherLoop()
     end
 end)
 
