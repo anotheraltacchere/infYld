@@ -84,67 +84,67 @@ end)
 
 -- IMPROVED DRAGGABLE - BETTER TRACKING FOR FAST MOVEMENTS
 local function MakeDraggable(DragPoint, Main)
-	if not DragPoint or not Main then
-		warn("MakeDraggable: Invalid elements")
-		return
-	end
-	
-	-- Wait for elements to be fully rendered
-	task.wait(0.1)
-	
-	local Dragging = false
-	local DragStart = Vector2.new(0, 0)
-	local StartPos = Main.Position
-	local CurrentInput = nil
-	
-	-- InputBegan on DragPoint
-	DragPoint.InputBegan:Connect(function(Input)
-		if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-			Dragging = true
-			CurrentInput = Input
-			DragStart = Input.Position
-			StartPos = Main.Position
+	if not DragPoint or not Main then return end
+
+	-- Make sure it can actually receive touch/mouse
+	DragPoint.Active = true
+	DragPoint.Selectable = false
+
+	local dragging = false
+	local dragInput = nil
+	local dragStart = Vector2.new()
+	local startPos = UDim2.new()
+	local lastPos = Vector2.new()
+
+	DragPoint.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragInput = input
+			dragStart = input.Position
+			lastPos = input.Position
+			startPos = Main.Position
 		end
 	end)
-	
-	-- Use RenderStepped for smooth, continuous tracking
+
+	DragPoint.InputEnded:Connect(function(input)
+		if input == dragInput or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+			dragInput = nil
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input == dragInput or (dragging and input.UserInputType == Enum.UserInputType.Touch) then
+			dragging = false
+			dragInput = nil
+		end
+	end)
+
+	-- Track latest movement using real Input.Position (no GetMouseLocation)
+	UserInputService.InputChanged:Connect(function(input)
+		if not dragging then return end
+
+		if dragInput then
+			-- Mouse path: match the same input object
+			if input == dragInput then
+				lastPos = input.Position
+			end
+
+			-- Touch path: some executors give different touch objects; accept any touch move while dragging
+			if input.UserInputType == Enum.UserInputType.Touch then
+				lastPos = input.Position
+			end
+		end
+	end)
+
+	-- Apply movement every frame so fast swipes don't "drop"
 	RunService.RenderStepped:Connect(function()
-		if Dragging and CurrentInput then
-			-- Get current position based on input type
-			local CurrentPos
-			if CurrentInput.UserInputType == Enum.UserInputType.Touch then
-				-- For touch, continuously get the latest position
-				CurrentPos = UserInputService:GetMouseLocation()
-			else
-				CurrentPos = UserInputService:GetMouseLocation()
-			end
-			
-			local Delta = CurrentPos - DragStart
-			Main.Position = UDim2.new(
-				StartPos.X.Scale,
-				StartPos.X.Offset + Delta.X,
-				StartPos.Y.Scale,
-				StartPos.Y.Offset + Delta.Y
-			)
-		end
-	end)
-	
-	-- InputEnded on DragPoint
-	DragPoint.InputEnded:Connect(function(Input)
-		if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-			Dragging = false
-			CurrentInput = nil
-		end
-	end)
-	
-	-- Global InputEnded as backup
-	UserInputService.InputEnded:Connect(function(Input)
-		if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-			if Dragging then
-				Dragging = false
-				CurrentInput = nil
-			end
-		end
+		if not dragging then return end
+		local delta = lastPos - dragStart
+		Main.Position = UDim2.new(
+			startPos.X.Scale, startPos.X.Offset + delta.X,
+			startPos.Y.Scale, startPos.Y.Offset + delta.Y
+		)
 	end)
 end
 
@@ -672,6 +672,17 @@ function OrionLib:MakeWindow(WindowConfig)
 	
 	CloseBtn.Parent = TopBarButtonContainer
 	MinimizeBtn.Parent = TopBarButtonContainer
+	
+	-- Put drag layer BELOW buttons
+DragPoint.ZIndex = 1
+
+TopBarButtonContainer.ZIndex = 10
+CloseBtn.ZIndex = 11
+MinimizeBtn.ZIndex = 11
+
+-- icons above button surface
+CloseBtnIcon.ZIndex = 12
+MinimizeBtnIcon.ZIndex = 12
 
 	local MainWindow = AddThemeObject(Create("Frame", {
 		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
