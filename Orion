@@ -714,7 +714,7 @@ function OrionLib:MakeWindow(WindowConfig)
 		MakeElement("Corner", 1)
 	})
 
-	-- Connect buttons AFTER everything is set up and rendered - USING DIRECT .Connect() NOT AddConnection()
+	-- Connect buttons AFTER everything is set up and rendered
 	task.wait(0.15)
 	
 	CloseBtn.MouseButton1Click:Connect(function()
