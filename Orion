@@ -46,6 +46,7 @@ end
 
 local Orion = Instance.new("ScreenGui")
 Orion.Name = "Orion"
+Orion.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 if syn then
 	syn.protect_gui(Orion)
 	Orion.Parent = game.CoreGui
@@ -86,91 +87,38 @@ local function MakeDraggable(DragPoint, Main)
 		local Dragging = false
 		local DragStart = nil
 		local StartPos = nil
-		local DragConnection = nil
 		
-		-- Handle drag start
 		AddConnection(DragPoint.InputBegan, function(Input)
 			if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
 				Dragging = true
 				DragStart = Input.Position
 				StartPos = Main.Position
 				
-				-- Disconnect previous drag connection if exists
-				if DragConnection then
-					DragConnection:Disconnect()
-					DragConnection = nil
-				end
-				
-				-- Create new drag connection using RenderStepped for smooth updates
-				DragConnection = RunService.RenderStepped:Connect(function()
-					if Dragging then
-						local CurrentInput = nil
-						
-						-- Get current input position (works for both mouse and touch)
-						if Input.UserInputType == Enum.UserInputType.Touch then
-							-- For touch, get the latest touch position
-							local touches = UserInputService:GetTouchesInProgress()
-							for _, touch in ipairs(touches) do
-								if touch.UserInputType == Enum.UserInputType.Touch then
-									CurrentInput = touch.Position
-									break
-								end
-							end
-						else
-							-- For mouse, use Mouse.X and Mouse.Y
-							CurrentInput = Vector2.new(Mouse.X, Mouse.Y)
-						end
-						
-						if CurrentInput then
-							local Delta = CurrentInput - DragStart
-							local NewPosition = UDim2.new(
-								StartPos.X.Scale,
-								StartPos.X.Offset + Delta.X,
-								StartPos.Y.Scale,
-								StartPos.Y.Offset + Delta.Y
-							)
-							Main.Position = NewPosition
-						end
-					end
-				end)
-				
-				-- Handle drag end
 				Input.Changed:Connect(function()
 					if Input.UserInputState == Enum.UserInputState.End then
 						Dragging = false
-						if DragConnection then
-							DragConnection:Disconnect()
-							DragConnection = nil
-						end
 					end
 				end)
 			end
 		end)
 		
-		-- Backup: Handle input end globally
-		AddConnection(UserInputService.InputEnded, function(Input)
-			if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-				Dragging = false
-				if DragConnection then
-					DragConnection:Disconnect()
-					DragConnection = nil
-				end
-			end
-		end)
-		
-		-- Handle touch moved specifically for better mobile support
-		AddConnection(UserInputService.TouchMoved, function(touch, gameProcessed)
-			if Dragging and touch.UserInputType == Enum.UserInputType.Touch then
-				if DragStart and StartPos then
-					local Delta = touch.Position - DragStart
-					local NewPosition = UDim2.new(
+		AddConnection(DragPoint.InputChanged, function(Input)
+			if Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch then
+				if Dragging and DragStart and StartPos then
+					local Delta = Input.Position - DragStart
+					Main.Position = UDim2.new(
 						StartPos.X.Scale,
 						StartPos.X.Offset + Delta.X,
 						StartPos.Y.Scale,
 						StartPos.Y.Offset + Delta.Y
 					)
-					Main.Position = NewPosition
 				end
+			end
+		end)
+		
+		AddConnection(UserInputService.InputEnded, function(Input)
+			if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+				Dragging = false
 			end
 		end)
 	end)
@@ -365,9 +313,10 @@ end)
 CreateElement("Button", function()
 	local Button = Create("TextButton", {
 		Text = "",
-		AutoButtonColor = false,
+		AutoButtonColor = true,
 		BackgroundTransparency = 1,
-		BorderSizePixel = 0
+		BorderSizePixel = 0,
+		Active = true
 	})
 	return Button
 end)
@@ -381,7 +330,8 @@ CreateElement("ScrollFrame", function(Color, Width)
 		ScrollBarImageColor3 = Color,
 		BorderSizePixel = 0,
 		ScrollBarThickness = Width,
-		CanvasSize = UDim2.new(0, 0, 0, 0)
+		CanvasSize = UDim2.new(0, 0, 0, 0),
+		Active = true
 	})
 	return ScrollFrame
 end)
@@ -402,7 +352,9 @@ end)
 CreateElement("ImageButton", function(ImageID)
 	local Image = Create("ImageButton", {
 		Image = ImageID,
-		BackgroundTransparency = 1
+		BackgroundTransparency = 1,
+		AutoButtonColor = true,
+		Active = true
 	})
 	return Image
 end)
@@ -571,7 +523,8 @@ function OrionLib:MakeWindow(WindowConfig)
 	})
 
 	local DragPoint = SetProps(MakeElement("TFrame"), {
-		Size = UDim2.new(1, 0, 0, 50)
+		Size = UDim2.new(1, 0, 0, 50),
+		Active = true
 	})
 
 	local WindowStuff = AddThemeObject(SetChildren(SetProps(MakeElement("RoundFrame", Color3.fromRGB(255, 255, 255), 0, 10), {
@@ -649,7 +602,8 @@ function OrionLib:MakeWindow(WindowConfig)
 		Parent = Orion,
 		Position = UDim2.new(0.5, -307, 0.5, -172),
 		Size = UDim2.new(0, 615, 0, 344),
-		ClipsDescendants = true
+		ClipsDescendants = true,
+		Active = true
 	}), {
 		SetChildren(SetProps(MakeElement("TFrame"), {
 			Size = UDim2.new(1, 0, 0, 50),
@@ -1086,7 +1040,8 @@ function OrionLib:MakeWindow(WindowConfig)
 				local SliderBar = SetChildren(SetProps(MakeElement("RoundFrame", SliderConfig.Color, 0, 5), {
 					Size = UDim2.new(1, -24, 0, 26),
 					Position = UDim2.new(0, 12, 0, 30),
-					BackgroundTransparency = 0.9
+					BackgroundTransparency = 0.9,
+					Active = true
 				}), {
 					SetProps(MakeElement("Stroke"), {
 						Color = SliderConfig.Color
@@ -1534,7 +1489,8 @@ function OrionLib:MakeWindow(WindowConfig)
 				local Color = Create("ImageLabel", {
 					Size = UDim2.new(1, -25, 1, 0),
 					Visible = false,
-					Image = "rbxassetid://4155801252"
+					Image = "rbxassetid://4155801252",
+					Active = true
 				}, {
 					Create("UICorner", {CornerRadius = UDim.new(0, 5)}),
 					ColorSelection
@@ -1543,7 +1499,8 @@ function OrionLib:MakeWindow(WindowConfig)
 				local Hue = Create("Frame", {
 					Size = UDim2.new(0, 20, 1, 0),
 					Position = UDim2.new(1, -20, 0, 0),
-					Visible = false
+					Visible = false,
+					Active = true
 				}, {
 					Create("UIGradient", {Rotation = 270, Color = ColorSequence.new{ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 0, 4)), ColorSequenceKeypoint.new(0.20, Color3.fromRGB(234, 255, 0)), ColorSequenceKeypoint.new(0.40, Color3.fromRGB(21, 255, 0)), ColorSequenceKeypoint.new(0.60, Color3.fromRGB(0, 255, 255)), ColorSequenceKeypoint.new(0.80, Color3.fromRGB(0, 17, 255)), ColorSequenceKeypoint.new(0.90, Color3.fromRGB(255, 0, 251)), ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 0, 4))},}),
 					Create("UICorner", {CornerRadius = UDim.new(0, 5)}),
@@ -1891,7 +1848,9 @@ function OrionLib:MakeNotifi(Configs)
     TextColor3 = Color3.fromRGB(200, 200, 200),
     Position = UDim2.new(1, -5, 0, 5),
     AnchorPoint = Vector2.new(1, 0),
-    Size = UDim2.new(0, 25, 0, 25)
+    Size = UDim2.new(0, 25, 0, 25),
+    AutoButtonColor = true,
+    Active = true
   })
   
   local TextLabel = Create("TextLabel", Frame2, {
