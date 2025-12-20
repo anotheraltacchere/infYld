@@ -369,7 +369,11 @@ CreateElement("ScrollFrame", function(Color, Width)
 		ScrollBarImageColor3 = Color,
 		BorderSizePixel = 0,
 		ScrollBarThickness = Width,
-		CanvasSize = UDim2.new(0, 0, 0, 0)
+		CanvasSize = UDim2.new(0, 0, 0, 0),
+		ScrollingEnabled = true,
+		Active = true,
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		ElasticBehavior = Enum.ElasticBehavior.Always
 	})
 	return ScrollFrame
 end)
@@ -714,10 +718,22 @@ function OrionLib:MakeWindow(WindowConfig)
 		MakeElement("Corner", 1)
 	})
 
-	-- Connect buttons AFTER everything is set up and rendered - USING DIRECT .Connect() NOT AddConnection()
-	task.wait(0.15)
+	-- Connect buttons AFTER everything is set up - DIRECT .Connect() NO WRAPPER
+	task.wait(0.2)
 	
 	CloseBtn.MouseButton1Click:Connect(function()
+		MainWindow.Visible = false
+		MobileReopenButton.Visible = true
+		UIHidden = true
+		OrionLib:MakeNotification({
+			Name = "Interface Hidden",
+			Content = "Tap Left Control to reopen the interface",
+			Time = 5
+		})
+		WindowConfig.CloseCallback()
+	end)
+
+	CloseBtn.Activated:Connect(function()
 		MainWindow.Visible = false
 		MobileReopenButton.Visible = true
 		UIHidden = true
@@ -744,6 +760,26 @@ function OrionLib:MakeWindow(WindowConfig)
 	end)
 
 	MinimizeBtn.MouseButton1Click:Connect(function()
+		if Minimized then
+			TweenService:Create(MainWindow, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Size = UDim2.new(0, 615, 0, 344)}):Play()
+			MinimizeBtnIcon.Image = "rbxassetid://7072719338"
+			wait(.02)
+			MainWindow.ClipsDescendants = false
+			WindowStuff.Visible = true
+			WindowTopBarLine.Visible = true
+		else
+			MainWindow.ClipsDescendants = true
+			WindowTopBarLine.Visible = false
+			MinimizeBtnIcon.Image = "rbxassetid://7072720870"
+
+			TweenService:Create(MainWindow, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Size = UDim2.new(0, WindowName.TextBounds.X + 140, 0, 50)}):Play()
+			wait(0.1)
+			WindowStuff.Visible = false	
+		end
+		Minimized = not Minimized    
+	end)
+
+	MinimizeBtn.Activated:Connect(function()
 		if Minimized then
 			TweenService:Create(MainWindow, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Size = UDim2.new(0, 615, 0, 344)}):Play()
 			MinimizeBtnIcon.Image = "rbxassetid://7072719338"
@@ -1195,11 +1231,15 @@ function OrionLib:MakeWindow(WindowConfig)
 					SliderBar
 				}), "Second")
 
+				-- Wait for slider to be parented before connecting
+				task.wait(0.1)
+
 				SliderBar.InputBegan:Connect(function(Input)
 					if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then 
 						Dragging = true 
 					end 
 				end)
+				
 				SliderBar.InputEnded:Connect(function(Input) 
 					if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then 
 						Dragging = false 
@@ -1207,10 +1247,16 @@ function OrionLib:MakeWindow(WindowConfig)
 				end)
 
 				UserInputService.InputChanged:Connect(function(Input)
-					if Dragging then 
+					if Dragging and (Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch) then 
 						local SizeScale = math.clamp((Mouse.X - SliderBar.AbsolutePosition.X) / SliderBar.AbsoluteSize.X, 0, 1)
 						Slider:Set(SliderConfig.Min + ((SliderConfig.Max - SliderConfig.Min) * SizeScale)) 
 						SaveCfg(game.GameId)
+					end
+				end)
+
+				UserInputService.InputEnded:Connect(function(Input)
+					if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+						Dragging = false
 					end
 				end)
 
