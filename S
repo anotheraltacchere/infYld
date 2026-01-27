@@ -4394,6 +4394,8 @@ CMDs[#CMDs + 1] = {NAME = 'txtlist / txts', DESC = 'View list of all saved text 
 CMDs[#CMDs + 1] = {NAME = 'date / datetoday', DESC = 'Shows current date and time'}
 CMDs[#CMDs + 1] = {NAME = 'execscript / scriptrun [query]', DESC = 'Execute a script from IYexecScripts folder'}
 CMDs[#CMDs + 1] = {NAME = 'scriptslist / scripts', DESC = 'View and execute scripts from list'}
+CMDs[#CMDs + 1] = {NAME = 'dexnoapi / noapidex', DESC = 'skip api check'}
+CMDs[#CMDs + 1] = {NAME = 'rspyv4 / remotespyv4', DESC = 'rspy with adonis bypass'}
 CMDs[#CMDs + 1] = {NAME = 'Evade / Evade GUI', DESC = 'Evade script'}
 CMDs[#CMDs + 1] = {NAME = 'Zoweapon remover / weaponremover', DESC = 'Zo weapon remover GUI'}
 CMDs[#CMDs + 1] = {NAME = 'Zocontrolsset / zocontrols', DESC = 'Zo controls setting GUI'}
@@ -21550,7 +21552,6 @@ local UIS = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 
--- Updated Animation IDs with names
 local animationIds = {
     ["Facepalm"] = "rbxassetid://6747110329",
     ["Lean-Back"] = "rbxassetid://7234736609",
@@ -21574,29 +21575,87 @@ local animationIds = {
     ["Weapon Stand"] = "rbxassetid://13452922479"
 }
 
--- Persistent state storage
 local guiState = {
     framePosition = UDim2.new(0.5, -125, 0.2, 0),
     minimizeButtonPosition = nil,
     isMinimized = false,
-    forceAnimations = false -- NEW: Force animation toggle state
+    forceAnimations = false
 }
 
 local animations = {}
 local currentAnimator = nil
 
--- CREATE GUI (Only once, persists across respawns)
+local function getWorkspaceFolder()
+    local workspaceFolder = nil
+    if isfolder then
+        if not isfolder("workspace") then
+            makefolder("workspace")
+        end
+        workspaceFolder = "workspace"
+    end
+    return workspaceFolder
+end
+
+local function getZoAnimsFolder()
+    local workspaceFolder = getWorkspaceFolder()
+    if workspaceFolder and isfolder then
+        local zoAnimsPath = workspaceFolder .. "/Zo Anims"
+        if not isfolder(zoAnimsPath) then
+            makefolder(zoAnimsPath)
+        end
+        return zoAnimsPath
+    end
+    return nil
+end
+
+local function saveAnimationsToFile()
+    local zoAnimsFolder = getZoAnimsFolder()
+    if zoAnimsFolder and writefile then
+        local filePath = zoAnimsFolder .. "/Zo Anims.txt"
+        local content = ""
+        for name, id in pairs(animationIds) do
+            content = content .. name .. "|" .. id .. "\n"
+        end
+        writefile(filePath, content)
+    end
+end
+
+local function loadAnimationsFromFile()
+    local zoAnimsFolder = getZoAnimsFolder()
+    if zoAnimsFolder and readfile and isfile then
+        local filePath = zoAnimsFolder .. "/Zo Anims.txt"
+        if isfile(filePath) then
+            local content = readfile(filePath)
+            local loadedIds = {}
+            for line in content:gmatch("[^\r\n]+") do
+                local name, id = line:match("([^|]+)|(.+)")
+                if name and id then
+                    loadedIds[name] = id
+                end
+            end
+            if next(loadedIds) then
+                animationIds = loadedIds
+            end
+        end
+    end
+end
+
+loadAnimationsFromFile()
+
 local screenGui = Instance.new("ScreenGui")
 screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- Main UI Frame (Compact size)
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 250, 0, 330) -- Increased height for toggle
+frame.Size = UDim2.new(0, 250, 0, 400)
 frame.Position = guiState.framePosition
 frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 frame.BorderSizePixel = 2
 frame.Parent = screenGui
+
+local frameCorner = Instance.new("UICorner")
+frameCorner.CornerRadius = UDim.new(0, 8)
+frameCorner.Parent = frame
 
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 30)
@@ -21604,15 +21663,19 @@ title.BackgroundTransparency = 1
 title.Text = "Animation Control"
 title.TextSize = 16
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.GothamBold
 title.Parent = frame
 
--- FORCE ANIMATION TOGGLE
 local forceToggleFrame = Instance.new("Frame")
 forceToggleFrame.Size = UDim2.new(1, -10, 0, 25)
 forceToggleFrame.Position = UDim2.new(0, 5, 0, 35)
 forceToggleFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 forceToggleFrame.BorderSizePixel = 0
 forceToggleFrame.Parent = frame
+
+local forceCorner = Instance.new("UICorner")
+forceCorner.CornerRadius = UDim.new(0, 5)
+forceCorner.Parent = forceToggleFrame
 
 local forceToggleLabel = Instance.new("TextLabel")
 forceToggleLabel.Size = UDim2.new(0.7, 0, 1, 0)
@@ -21622,12 +21685,13 @@ forceToggleLabel.Text = "Force Animations"
 forceToggleLabel.TextSize = 12
 forceToggleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 forceToggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+forceToggleLabel.Font = Enum.Font.Gotham
 forceToggleLabel.Parent = forceToggleFrame
 
 local forceToggleDot = Instance.new("TextButton")
 forceToggleDot.Size = UDim2.new(0, 20, 0, 20)
 forceToggleDot.Position = UDim2.new(1, -25, 0.5, -10)
-forceToggleDot.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- Red = OFF
+forceToggleDot.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 forceToggleDot.Text = ""
 forceToggleDot.Parent = forceToggleFrame
 
@@ -21635,23 +21699,88 @@ local dotCorner = Instance.new("UICorner")
 dotCorner.CornerRadius = UDim.new(1, 0)
 dotCorner.Parent = forceToggleDot
 
--- SCROLLABLE FRAME
 local scrollFrame = Instance.new("ScrollingFrame")
-scrollFrame.Size = UDim2.new(1, 0, 1, -75) -- Adjusted for toggle
-scrollFrame.Position = UDim2.new(0, 0, 0, 70) -- Adjusted for toggle
+scrollFrame.Size = UDim2.new(1, 0, 1, -145)
+scrollFrame.Position = UDim2.new(0, 0, 0, 70)
 scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 700)
 scrollFrame.ScrollBarThickness = 5
 scrollFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 scrollFrame.BorderSizePixel = 0
 scrollFrame.Parent = frame
 
--- UI List Layout
 local layout = Instance.new("UIListLayout")
 layout.Parent = scrollFrame
 layout.Padding = UDim.new(0, 5)
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 
--- Minimize Button
+local addAnimFrame = Instance.new("Frame")
+addAnimFrame.Size = UDim2.new(1, -10, 0, 60)
+addAnimFrame.Position = UDim2.new(0, 5, 1, -65)
+addAnimFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+addAnimFrame.BorderSizePixel = 0
+addAnimFrame.Parent = frame
+
+local addAnimCorner = Instance.new("UICorner")
+addAnimCorner.CornerRadius = UDim.new(0, 5)
+addAnimCorner.Parent = addAnimFrame
+
+local addAnimLabel = Instance.new("TextLabel")
+addAnimLabel.Size = UDim2.new(1, -10, 0, 15)
+addAnimLabel.Position = UDim2.new(0, 5, 0, 3)
+addAnimLabel.BackgroundTransparency = 1
+addAnimLabel.Text = "Add Custom Animation"
+addAnimLabel.TextSize = 11
+addAnimLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+addAnimLabel.TextXAlignment = Enum.TextXAlignment.Left
+addAnimLabel.Font = Enum.Font.GothamBold
+addAnimLabel.Parent = addAnimFrame
+
+local animNameBox = Instance.new("TextBox")
+animNameBox.Size = UDim2.new(0.48, -5, 0, 25)
+animNameBox.Position = UDim2.new(0, 5, 0, 20)
+animNameBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+animNameBox.BorderSizePixel = 0
+animNameBox.Text = "Name"
+animNameBox.TextSize = 11
+animNameBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+animNameBox.PlaceholderText = "Animation Name"
+animNameBox.Font = Enum.Font.Gotham
+animNameBox.Parent = addAnimFrame
+
+local nameBoxCorner = Instance.new("UICorner")
+nameBoxCorner.CornerRadius = UDim.new(0, 4)
+nameBoxCorner.Parent = animNameBox
+
+local animIdBox = Instance.new("TextBox")
+animIdBox.Size = UDim2.new(0.48, -5, 0, 25)
+animIdBox.Position = UDim2.new(0.52, 0, 0, 20)
+animIdBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+animIdBox.BorderSizePixel = 0
+animIdBox.Text = "ID"
+animIdBox.TextSize = 11
+animIdBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+animIdBox.PlaceholderText = "Asset ID"
+animIdBox.Font = Enum.Font.Gotham
+animIdBox.Parent = addAnimFrame
+
+local idBoxCorner = Instance.new("UICorner")
+idBoxCorner.CornerRadius = UDim.new(0, 4)
+idBoxCorner.Parent = animIdBox
+
+local addButton = Instance.new("TextButton")
+addButton.Size = UDim2.new(1, -10, 0, 12)
+addButton.Position = UDim2.new(0, 5, 1, -15)
+addButton.BackgroundColor3 = Color3.fromRGB(70, 150, 255)
+addButton.Text = "Add"
+addButton.TextSize = 11
+addButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+addButton.Font = Enum.Font.GothamBold
+addButton.Parent = addAnimFrame
+
+local addButtonCorner = Instance.new("UICorner")
+addButtonCorner.CornerRadius = UDim.new(0, 4)
+addButtonCorner.Parent = addButton
+
 local minimizeButton = Instance.new("TextButton")
 minimizeButton.Size = UDim2.new(0, 60, 0, 30)
 minimizeButton.Position = guiState.minimizeButtonPosition or UDim2.new(0.5, -30, 0, frame.Size.Y.Offset + 5)
@@ -21660,64 +21789,249 @@ minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 minimizeButton.Text = guiState.isMinimized and "Show" or "Hide"
 minimizeButton.Parent = screenGui
 minimizeButton.BackgroundTransparency = 0.2
+minimizeButton.Font = Enum.Font.GothamBold
 
--- Set initial visibility based on saved state
+local minButtonCorner = Instance.new("UICorner")
+minButtonCorner.CornerRadius = UDim.new(0, 6)
+minButtonCorner.Parent = minimizeButton
+
 frame.Visible = not guiState.isMinimized
 
--- Force Toggle Functionality
 forceToggleDot.MouseButton1Click:Connect(function()
     guiState.forceAnimations = not guiState.forceAnimations
     
     if guiState.forceAnimations then
-        forceToggleDot.BackgroundColor3 = Color3.fromRGB(50, 200, 50) -- Green = ON
+        forceToggleDot.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
     else
-        forceToggleDot.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- Red = OFF
+        forceToggleDot.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
     end
 end)
 
--- Generate Play/Pause buttons inside the scroll frame
 local buttons = {}
 local animationButtons = {}
 
-for name, id in pairs(animationIds) do
+local function createAnimationButton(name, id)
     local buttonContainer = Instance.new("Frame")
     buttonContainer.Size = UDim2.new(1, 0, 0, 35)
     buttonContainer.BackgroundTransparency = 1
     buttonContainer.Parent = scrollFrame
+    buttonContainer.Name = name
 
     local playButton = Instance.new("TextButton")
-    playButton.Size = UDim2.new(0.45, -5, 1, 0)
+    playButton.Size = UDim2.new(0.38, -5, 1, 0)
     playButton.Position = UDim2.new(0, 0, 0, 0)
     playButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
-    playButton.Text = "Play " .. name
-    playButton.TextSize = 12
+    playButton.Text = "▶ " .. name
+    playButton.TextSize = 11
     playButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    playButton.Font = Enum.Font.Gotham
     playButton.Parent = buttonContainer
 
+    local playCorner = Instance.new("UICorner")
+    playCorner.CornerRadius = UDim.new(0, 5)
+    playCorner.Parent = playButton
+
     local pauseButton = Instance.new("TextButton")
-    pauseButton.Size = UDim2.new(0.45, -5, 1, 0)
-    pauseButton.Position = UDim2.new(0.55, 0, 0, 0)
+    pauseButton.Size = UDim2.new(0.38, -5, 1, 0)
+    pauseButton.Position = UDim2.new(0.4, 0, 0, 0)
     pauseButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-    pauseButton.Text = "Pause " .. name
-    pauseButton.TextSize = 12
+    pauseButton.Text = "⏸ " .. name
+    pauseButton.TextSize = 11
     pauseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    pauseButton.Font = Enum.Font.Gotham
     pauseButton.Parent = buttonContainer
+
+    local pauseCorner = Instance.new("UICorner")
+    pauseCorner.CornerRadius = UDim.new(0, 5)
+    pauseCorner.Parent = pauseButton
+
+    local deleteButton = Instance.new("TextButton")
+    deleteButton.Size = UDim2.new(0.18, -5, 1, 0)
+    deleteButton.Position = UDim2.new(0.82, 0, 0, 0)
+    deleteButton.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+    deleteButton.Text = "✖"
+    deleteButton.TextSize = 14
+    deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    deleteButton.Font = Enum.Font.GothamBold
+    deleteButton.Parent = buttonContainer
+
+    local deleteCorner = Instance.new("UICorner")
+    deleteCorner.CornerRadius = UDim.new(0, 5)
+    deleteCorner.Parent = deleteButton
 
     table.insert(buttons, playButton)
     table.insert(buttons, pauseButton)
+    table.insert(buttons, deleteButton)
 
     animationButtons[name] = {
         play = playButton,
-        pause = pauseButton
+        pause = pauseButton,
+        delete = deleteButton,
+        container = buttonContainer
     }
+
+    return buttonContainer
 end
 
--- Update CanvasSize based on content height
+local confirmDeleteFrame = Instance.new("Frame")
+confirmDeleteFrame.Size = UDim2.new(0, 200, 0, 100)
+confirmDeleteFrame.Position = UDim2.new(0.5, -100, 0.5, -50)
+confirmDeleteFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+confirmDeleteFrame.BorderSizePixel = 2
+confirmDeleteFrame.BorderColor3 = Color3.fromRGB(255, 100, 100)
+confirmDeleteFrame.Visible = false
+confirmDeleteFrame.ZIndex = 10
+confirmDeleteFrame.Parent = screenGui
+
+local confirmCorner = Instance.new("UICorner")
+confirmCorner.CornerRadius = UDim.new(0, 8)
+confirmCorner.Parent = confirmDeleteFrame
+
+local confirmLabel = Instance.new("TextLabel")
+confirmLabel.Size = UDim2.new(1, -20, 0, 50)
+confirmLabel.Position = UDim2.new(0, 10, 0, 10)
+confirmLabel.BackgroundTransparency = 1
+confirmLabel.Text = "Delete this animation?"
+confirmLabel.TextSize = 13
+confirmLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+confirmLabel.TextWrapped = true
+confirmLabel.Font = Enum.Font.GothamBold
+confirmLabel.ZIndex = 10
+confirmLabel.Parent = confirmDeleteFrame
+
+local confirmYes = Instance.new("TextButton")
+confirmYes.Size = UDim2.new(0.45, -5, 0, 30)
+confirmYes.Position = UDim2.new(0, 5, 1, -35)
+confirmYes.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+confirmYes.Text = "Yes"
+confirmYes.TextSize = 12
+confirmYes.TextColor3 = Color3.fromRGB(255, 255, 255)
+confirmYes.Font = Enum.Font.GothamBold
+confirmYes.ZIndex = 10
+confirmYes.Parent = confirmDeleteFrame
+
+local confirmYesCorner = Instance.new("UICorner")
+confirmYesCorner.CornerRadius = UDim.new(0, 5)
+confirmYesCorner.Parent = confirmYes
+
+local confirmNo = Instance.new("TextButton")
+confirmNo.Size = UDim2.new(0.45, -5, 0, 30)
+confirmNo.Position = UDim2.new(0.55, 0, 1, -35)
+confirmNo.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+confirmNo.Text = "No"
+confirmNo.TextSize = 12
+confirmNo.TextColor3 = Color3.fromRGB(255, 255, 255)
+confirmNo.Font = Enum.Font.GothamBold
+confirmNo.ZIndex = 10
+confirmNo.Parent = confirmDeleteFrame
+
+local confirmNoCorner = Instance.new("UICorner")
+confirmNoCorner.CornerRadius = UDim.new(0, 5)
+confirmNoCorner.Parent = confirmNo
+
+local currentDeleteTarget = nil
+
+local function showDeleteConfirmation(animName)
+    currentDeleteTarget = animName
+    confirmLabel.Text = "Delete '" .. animName .. "'?"
+    confirmDeleteFrame.Visible = true
+end
+
+local function hideDeleteConfirmation()
+    confirmDeleteFrame.Visible = false
+    currentDeleteTarget = nil
+end
+
+confirmNo.MouseButton1Click:Connect(hideDeleteConfirmation)
+
+confirmYes.MouseButton1Click:Connect(function()
+    if currentDeleteTarget and animationIds[currentDeleteTarget] then
+        if animations[currentDeleteTarget] then
+            pcall(function()
+                animations[currentDeleteTarget]:Stop()
+            end)
+            animations[currentDeleteTarget] = nil
+        end
+        
+        animationIds[currentDeleteTarget] = nil
+        
+        if animationButtons[currentDeleteTarget] then
+            animationButtons[currentDeleteTarget].container:Destroy()
+            animationButtons[currentDeleteTarget] = nil
+        end
+        
+        saveAnimationsToFile()
+        hideDeleteConfirmation()
+    end
+end)
+
+for name, id in pairs(animationIds) do
+    createAnimationButton(name, id)
+end
+
+addButton.MouseButton1Click:Connect(function()
+    local animName = animNameBox.Text
+    local animId = animIdBox.Text
+    
+    if animName and animName ~= "" and animName ~= "Name" and animId and animId ~= "" and animId ~= "ID" then
+        local fullId = animId
+        if not animId:match("rbxassetid://") then
+            fullId = "rbxassetid://" .. animId
+        end
+        
+        if not animationIds[animName] then
+            animationIds[animName] = fullId
+            createAnimationButton(animName, fullId)
+            
+            if currentAnimator then
+                local animation = Instance.new("Animation")
+                animation.AnimationId = fullId
+                local loadedAnim = currentAnimator:LoadAnimation(animation)
+                animations[animName] = loadedAnim
+                
+                if animationButtons[animName] then
+                    local playBtn = animationButtons[animName].play
+                    local pauseBtn = animationButtons[animName].pause
+                    local deleteBtn = animationButtons[animName].delete
+                    
+                    playBtn.MouseButton1Click:Connect(function()
+                        if animations[animName] then
+                            if guiState.forceAnimations then
+                                local playingTracks = currentAnimator:GetPlayingAnimationTracks()
+                                for _, track in pairs(playingTracks) do
+                                    if track.Priority ~= Enum.AnimationPriority.Core then
+                                        track:Stop()
+                                    end
+                                end
+                                animations[animName].Priority = Enum.AnimationPriority.Action
+                            end
+                            animations[animName]:Play()
+                        end
+                    end)
+                    
+                    pauseBtn.MouseButton1Click:Connect(function()
+                        if animations[animName] then
+                            animations[animName]:Stop()
+                        end
+                    end)
+                    
+                    deleteBtn.MouseButton1Click:Connect(function()
+                        showDeleteConfirmation(animName)
+                    end)
+                end
+            end
+            
+            saveAnimationsToFile()
+            animNameBox.Text = "Name"
+            animIdBox.Text = "ID"
+        end
+    end
+end)
+
 layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     scrollFrame.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
 end)
 
--- Minimize UI Functionality
 minimizeButton.MouseButton1Click:Connect(function()
     guiState.isMinimized = not guiState.isMinimized
 
@@ -21730,7 +22044,6 @@ minimizeButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- DRAGGABLE GUI (Mobile & PC Support)
 local dragging, dragInput, startPos, dragStart
 
 local function enableDragging(guiElement, savePositionCallback)
@@ -21768,7 +22081,6 @@ local function enableDragging(guiElement, savePositionCallback)
     end)
 end
 
--- Enable dragging with position saving
 enableDragging(frame, function(pos)
     guiState.framePosition = pos
 end)
@@ -21789,7 +22101,6 @@ local function loadAnimationsForCharacter(character)
     
     currentAnimator = animator
     
-    -- Clear old animations
     for name, anim in pairs(animations) do
         if anim then
             pcall(function()
@@ -21799,30 +22110,26 @@ local function loadAnimationsForCharacter(character)
     end
     animations = {}
     
-    -- Load new animations
     for name, id in pairs(animationIds) do
         local animation = Instance.new("Animation")
         animation.AnimationId = id
         local loadedAnim = animator:LoadAnimation(animation)
         animations[name] = loadedAnim
         
-        -- Reconnect buttons
         if animationButtons[name] then
             local playBtn = animationButtons[name].play
             local pauseBtn = animationButtons[name].pause
+            local deleteBtn = animationButtons[name].delete
             
             playBtn.MouseButton1Click:Connect(function()
                 if animations[name] then
-                    -- Check if force animations is enabled
                     if guiState.forceAnimations then
-                        -- Stop all non-core animations
                         local playingTracks = animator:GetPlayingAnimationTracks()
                         for _, track in pairs(playingTracks) do
                             if track.Priority ~= Enum.AnimationPriority.Core then
                                 track:Stop()
                             end
                         end
-                        -- Set higher priority and play
                         animations[name].Priority = Enum.AnimationPriority.Action
                     end
                     animations[name]:Play()
@@ -21834,11 +22141,14 @@ local function loadAnimationsForCharacter(character)
                     animations[name]:Stop()
                 end
             end)
+            
+            deleteBtn.MouseButton1Click:Connect(function()
+                showDeleteConfirmation(name)
+            end)
         end
     end
 end
 
--- Initial load for current character
 local function setupCharacter()
     local character = player.Character
     if character then
@@ -23177,6 +23487,9 @@ local updates = {
 "[savetxt / txt]",
 "[readtxt / txtopen]",
 "[txtlist / txts]",
+"[date / datetoday]",
+"[dexnoapi / noapidex]",
+"[rspyv4 / remotespyv4]",
 }
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -24137,6 +24450,14 @@ addcmd('scriptslist',{'scripts'},function(args, speaker)
     
     dragGUI(main)
     main:TweenPosition(UDim2.new(0.5,-250,0.5,-160),"InOut","Quart",0.5,true,nil)
+end)
+
+addcmd('dexnoapi',{'noapidex'},function(args, speaker)
+loadstring(game:HttpGet("https://raw.githubusercontent.com/UltraFEmotes/im-bored/refs/heads/main/dexnoapi.lua"))()
+end)
+
+addcmd('rspyv4',{'remotespyv4'},function(args, speaker)
+loadstring(game:HttpGet("https://raw.githubusercontent.com/anotheraltacchere/infYld/refs/heads/main/Spy%20v4"))()
 end)
 
 addcmd('Evade',{'evade GUI'},function(args, speaker)
