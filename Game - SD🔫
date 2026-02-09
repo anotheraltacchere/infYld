@@ -1,0 +1,2957 @@
+local DrRayLibrary = loadstring(game:HttpGet("https://raw.githubusercontent.com/AZYsGithub/DrRay-UI-Library/main/DrRay.lua"))()
+
+local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Teams = game:GetService("Teams")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local StarterGui = game:GetService("StarterGui")
+
+local useTaskWait = false
+local waitMethod = wait
+local taskWaitMethod = task.wait
+
+local LocalPlayer = Players.LocalPlayer
+local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local Camera = Workspace.CurrentCamera
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
+
+local espSettings = {
+    enemyTransparency = 0.5,
+    playerTransparency = 0.3,
+    showNames = false,
+    showHealth = false,
+    showDistance = false,
+    nameSize = 14,
+    healthSize = 12,
+    distanceSize = 12,
+    highlightColor = Color3.fromRGB(255, 0, 0),
+    teamColor = Color3.fromRGB(0, 255, 0),
+    enemyColor = Color3.fromRGB(255, 0, 0),
+    useTeamColors = true,
+    teamColoredText = true,
+    forceTeamColor = true,
+    forceEnemyColor = true
+}
+
+local aimbotSettings = {
+    enabled = false,
+    smartMode = false,
+    legitMode = false,
+    aimFlexibility = false,
+    persistentAim = false,
+    smoothing = 0.2,
+    fovRadius = 125,
+    fov360 = false,
+    fov360True = false,
+    minDelay = 100,
+    maxDelay = 300,
+    lockDistance = 1000,
+    targetMode = "crosshair",
+    showCrosshair = true,
+    showFOVCircle = true,
+    targetExternalTargets = true,
+    crosshairColor = Color3.fromRGB(255, 255, 255),
+    crosshairX = 0,
+    crosshairY = -30,
+    crosshairSize = 10,
+    crosshairType = "cross",
+    crosshairTransparency = 0,
+    currentTarget = nil,
+    isAimingAtTarget = false,
+    noAimbotPlayers = false,
+    predictFarRange = false,
+    predictMovement = false,
+    farRangeOffset = 0.1,
+    movementPredictionFactor = 0.5,
+    movementPredictionAhead = true,
+    targetDetectionRate = 0.01,
+    screenConversionRate = 0.01,
+    fasterAimbot = false,
+    useLerpMethod = false,
+    autoShoot = false,
+    shootButton = "MouseButton1",
+    shootDelay = 0.01,
+    externalTargetIsModel = true,
+    lastTargetTime = 0,
+    targetTimeout = 0.5,
+    ignoreWalls = false,
+    autoShootTolerance = 15,
+    lastShootTime = 0,
+    shootCooldown = 0.1
+}
+
+local silentAimSettings = {
+    enabled = false,
+    fov = 120,
+    wallCheck = true,
+    targetMode = "crosshair",
+    teamCheck = true,
+    deadCheck = true,
+    whitelistCheck = true,
+    targetExternalTargets = true,
+    currentTarget = nil,
+    updateRate = 0
+}
+
+local teleportSettings = {
+    enabled = false,
+    mode = "click",
+    targetList = {},
+    currentIndex = 1,
+    teleportOffset = Vector3.new(0, 3, 0),
+    autoRotate = true,
+    safetyCheck = true,
+    cooldown = 0.5,
+    lastTeleport = 0,
+    crosshairDetection = true,
+    detectionRadius = 50
+}
+
+local teamSettings = {
+    teamCheckEnabled = false,
+    targetEnemiesOnly = true,
+    espTeammates = false,
+    espEnemies = true,
+    localPlayerTeam = nil,
+    teamColors = {},
+    teamWhitelist = {},
+    playerWhitelist = {}
+}
+
+local shiftLockSettings = {
+    enabled = false,
+    alwaysFixCamera = false,
+    zoomDistance = 30,
+    originalCameraMaxZoomDistance = nil,
+    lastCameraPosition = nil,
+    lastCameraLookAt = nil,
+    smoothTransition = false,
+    transitionSpeed = 0.1,
+    referenceDirection = Vector3.new(0, 0, -1),
+    lastMousePosition = Vector2.new(0, 0),
+    alternativeMode = false,
+    stabilizationFactor = 0.8,
+    lastUpdateTime = 0,
+    updateInterval = 0.1,
+    fixedReferencePoint = nil,
+    restrictCameraMovements = false
+}
+
+local highlights = {}
+local nameLabels = {}
+local healthLabels = {}
+local distanceLabels = {}
+
+local espEnabled = false
+local playerEspEnabled = false
+local noEspPlayers = false
+
+local externalTargets = {}
+local externalTargetLabels = {}
+local targetNameInput = ""
+local autoReaddTargets = false
+local readdDelay = 2
+
+local autoTargetSystem = {
+    enabled = false,
+    targets = {},
+    delay = 2,
+    lastUpdate = 0
+}
+
+local espUpdateConnection
+local aimbotConnection
+local teamUpdateConnection
+local readdTargetsConnection
+local shiftLockConnection
+local autoTargetConnection
+local autoShootConnection
+local teleportConnection
+local silentAimConnection
+local fovCircle
+local crosshairObj
+local lastCameraPosition
+local lastCharacterPosition
+local cameraMovementConnection
+
+local textBoxValues = {
+    autoTargetName = "",
+    targetName = "",
+    teamName = "",
+    playerName = ""
+}
+
+local errorCooldowns = {}
+local silentAimHook = nil
+
+local function notify(title, message, duration)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = title,
+            Text = message,
+            Duration = duration or 3
+        })
+    end)
+end
+
+local function getCurrentWait()
+    return useTaskWait and taskWaitMethod or waitMethod
+end
+
+local function showMessage(msg, duration)
+    notify("Sniper Duels GUI", msg, duration or 3)
+end
+
+local function handleError(source, err)
+    local currentTime = tick()
+    if not errorCooldowns[source] or currentTime - errorCooldowns[source] > 5 then
+        errorCooldowns[source] = currentTime
+        warn("[" .. source .. "] Error: " .. tostring(err))
+    end
+end
+
+local function clearHighlights()
+    for target, highlight in pairs(highlights) do
+        pcall(function()
+            if highlight and highlight.Parent then
+                highlight:Destroy()
+            end
+        end)
+    end
+    highlights = {}
+end
+
+local function clearNameLabels()
+    for target, label in pairs(nameLabels) do
+        pcall(function()
+            if label and label.Parent then
+                label:Destroy()
+            end
+        end)
+    end
+    nameLabels = {}
+end
+
+local function clearHealthLabels()
+    for target, data in pairs(healthLabels) do
+        pcall(function()
+            if data and data.gui and data.gui.Parent then
+                data.gui:Destroy()
+            end
+        end)
+    end
+    healthLabels = {}
+end
+
+local function clearDistanceLabels()
+    for target, data in pairs(distanceLabels) do
+        pcall(function()
+            if data and data.gui and data.gui.Parent then
+                data.gui:Destroy()
+            end
+        end)
+    end
+    distanceLabels = {}
+end
+
+local function getPlayerTeam(player)
+    if player.Team then
+        return player.Team
+    end
+    
+    local teamAttribute = player:GetAttribute("Team")
+    if teamAttribute then
+        return teamAttribute
+    end
+    
+    if player.Character then
+        local charTeamAttribute = player.Character:GetAttribute("Team")
+        if charTeamAttribute then
+            return charTeamAttribute
+        end
+    end
+    
+    return nil
+end
+
+local function isOnSameTeam(player)
+    if not teamSettings.teamCheckEnabled then
+        return false
+    end
+    
+    local playerTeam = getPlayerTeam(player)
+    local localTeam = teamSettings.localPlayerTeam
+    
+    if teamSettings.playerWhitelist[player.Name] or 
+       teamSettings.playerWhitelist[player.DisplayName] then
+        return true
+    end
+    
+    if playerTeam and typeof(playerTeam) == "string" and teamSettings.teamWhitelist[playerTeam] then
+        return true
+    elseif playerTeam and typeof(playerTeam) == "Instance" and 
+           playerTeam:IsA("Team") and teamSettings.teamWhitelist[playerTeam.Name] then
+        return true
+    end
+    
+    if playerTeam and localTeam then
+        return playerTeam == localTeam
+    end
+    
+    return false
+end
+
+local function getTeamColor(player)
+    local isTeammate = isOnSameTeam(player)
+    
+    if espSettings.forceTeamColor and isTeammate then
+        return espSettings.teamColor
+    elseif espSettings.forceEnemyColor and not isTeammate then
+        return espSettings.enemyColor
+    end
+    
+    local playerTeam = getPlayerTeam(player)
+    
+    if playerTeam and typeof(playerTeam) == "Instance" and playerTeam:IsA("Team") then
+        return playerTeam.TeamColor.Color
+    elseif playerTeam and teamSettings.teamColors[playerTeam] then
+        return teamSettings.teamColors[playerTeam]
+    end
+    
+    return isTeammate and espSettings.teamColor or espSettings.enemyColor
+end
+
+local function getTextColor(player)
+    if not teamSettings.teamCheckEnabled or not espSettings.teamColoredText then
+        return Color3.fromRGB(255, 255, 255)
+    end
+    
+    return getTeamColor(player)
+end
+
+local function updateLocalPlayerTeam()
+    teamSettings.localPlayerTeam = getPlayerTeam(LocalPlayer)
+end
+
+local function createNameLabel(target, name, player)
+    pcall(function()
+        if nameLabels[target] and nameLabels[target].Parent then
+            nameLabels[target]:Destroy()
+            nameLabels[target] = nil
+        end
+    end)
+
+    local head = target:FindFirstChild("Head") or target:FindFirstChild("HumanoidRootPart") or target
+    if not head then return end
+
+    local billboardGui = Instance.new("BillboardGui")
+    billboardGui.Size = UDim2.new(0, 100, 0, 20)
+    billboardGui.StudsOffset = Vector3.new(0, 2, 0)
+    billboardGui.Adornee = head
+    billboardGui.AlwaysOnTop = true
+    billboardGui.Parent = head
+
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1, 0, 1, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.TextColor3 = player and getTextColor(player) or Color3.fromRGB(255, 255, 255)
+    nameLabel.TextStrokeTransparency = 0
+    nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    nameLabel.TextSize = espSettings.nameSize
+    nameLabel.Font = Enum.Font.SourceSansBold
+    nameLabel.Text = name
+    nameLabel.Parent = billboardGui
+
+    nameLabels[target] = billboardGui
+    return billboardGui
+end
+
+local function createHealthLabel(target, player)
+    pcall(function()
+        if healthLabels[target] and healthLabels[target].gui and healthLabels[target].gui.Parent then
+            healthLabels[target].gui:Destroy()
+            healthLabels[target] = nil
+        end
+    end)
+
+    local humanoid = target:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+
+    local head = target:FindFirstChild("Head") or target:FindFirstChild("HumanoidRootPart") or target
+    if not head then return end
+
+    local yOffset = espSettings.showNames and 3.5 or 2
+    
+    local billboardGui = Instance.new("BillboardGui")
+    billboardGui.Size = UDim2.new(0, 80, 0, 15)
+    billboardGui.StudsOffset = Vector3.new(0, yOffset, 0)
+    billboardGui.Adornee = head
+    billboardGui.AlwaysOnTop = true
+    billboardGui.Parent = head
+
+    local healthLabel = Instance.new("TextLabel")
+    healthLabel.Size = UDim2.new(1, 0, 1, 0)
+    healthLabel.BackgroundTransparency = 1
+    healthLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+    healthLabel.TextStrokeTransparency = 0
+    healthLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    healthLabel.TextSize = espSettings.healthSize
+    healthLabel.Font = Enum.Font.SourceSans
+    healthLabel.Text = math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth)
+    healthLabel.Parent = billboardGui
+
+    healthLabels[target] = {
+        gui = billboardGui, 
+        label = healthLabel, 
+        humanoid = humanoid,
+        player = player
+    }
+    return billboardGui
+end
+
+local function createDistanceLabel(target, player)
+    pcall(function()
+        if distanceLabels[target] and distanceLabels[target].gui and distanceLabels[target].gui.Parent then
+            distanceLabels[target].gui:Destroy()
+            distanceLabels[target] = nil
+        end
+    end)
+
+    local head = target:FindFirstChild("Head") or target:FindFirstChild("HumanoidRootPart") or target
+    if not head then return end
+
+    local yOffset = 2
+    if espSettings.showNames then yOffset = yOffset + 1.5 end
+    if espSettings.showHealth then yOffset = yOffset + 1.5 end
+    
+    local billboardGui = Instance.new("BillboardGui")
+    billboardGui.Size = UDim2.new(0, 80, 0, 15)
+    billboardGui.StudsOffset = Vector3.new(0, yOffset, 0)
+    billboardGui.Adornee = head
+    billboardGui.AlwaysOnTop = true
+    billboardGui.Parent = head
+
+    local distanceLabel = Instance.new("TextLabel")
+    distanceLabel.Size = UDim2.new(1, 0, 1, 0)
+    distanceLabel.BackgroundTransparency = 1
+    distanceLabel.TextColor3 = player and getTextColor(player) or Color3.fromRGB(255, 255, 255)
+    distanceLabel.TextStrokeTransparency = 0
+    distanceLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    distanceLabel.TextSize = espSettings.distanceSize
+    distanceLabel.Font = Enum.Font.SourceSans
+    distanceLabel.Text = "0 studs"
+    distanceLabel.Parent = billboardGui
+
+    distanceLabels[target] = {
+        gui = billboardGui, 
+        label = distanceLabel,
+        player = player
+    }
+    return billboardGui
+end
+
+local function updateDistanceLabels()
+    if not espSettings.showDistance or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        return
+    end
+    
+    local playerPos = LocalPlayer.Character.HumanoidRootPart.Position
+    
+    for target, data in pairs(distanceLabels) do
+        pcall(function()
+            if data.label and data.gui and data.gui.Parent and data.gui.Adornee then
+                local targetPos = data.gui.Adornee.Position
+                local distance = (playerPos - targetPos).Magnitude
+                data.label.Text = math.floor(distance) .. " studs"
+                
+                if data.player and teamSettings.teamCheckEnabled and espSettings.teamColoredText then
+                    data.label.TextColor3 = getTextColor(data.player)
+                end
+            end
+        end)
+    end
+end
+
+local function updateESP()
+    if not espEnabled then
+        clearHighlights()
+        clearNameLabels()
+        clearHealthLabels()
+        clearDistanceLabels()
+        return
+    end
+
+    if playerEspEnabled and not noEspPlayers then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                local character = player.Character
+                
+                local isTeammate = isOnSameTeam(player)
+                local shouldEsp = (isTeammate and teamSettings.espTeammates) or 
+                                 (not isTeammate and teamSettings.espEnemies) or 
+                                 (not teamSettings.teamCheckEnabled)
+                
+                if shouldEsp then
+                    local highlightColor = espSettings.highlightColor
+                    if teamSettings.teamCheckEnabled and espSettings.useTeamColors then
+                        highlightColor = getTeamColor(player)
+                    end
+                    
+                    local transparency = isTeammate and espSettings.playerTransparency or espSettings.enemyTransparency
+                    
+                    pcall(function()
+                        if not highlights[character] or not highlights[character].Parent then
+                            local highlight = Instance.new("Highlight")
+                            highlight.Adornee = character
+                            highlight.FillColor = highlightColor
+                            highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                            highlight.FillTransparency = transparency
+                            highlight.OutlineTransparency = 0
+                            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                            highlight.Parent = character
+                            highlights[character] = highlight
+                        else
+                            highlights[character].FillColor = highlightColor
+                            highlights[character].FillTransparency = transparency
+                        end
+                    end)
+
+                    if espSettings.showNames then
+                        pcall(function()
+                            if not nameLabels[character] or not nameLabels[character].Parent then
+                                createNameLabel(character, player.DisplayName or player.Name, player)
+                            else
+                                local label = nameLabels[character]:FindFirstChildOfClass("TextLabel")
+                                if label and teamSettings.teamCheckEnabled and espSettings.teamColoredText then
+                                    label.TextColor3 = getTextColor(player)
+                                end
+                            end
+                        end)
+                    elseif nameLabels[character] then
+                        pcall(function()
+                            nameLabels[character]:Destroy()
+                            nameLabels[character] = nil
+                        end)
+                    end
+
+                    if espSettings.showHealth then
+                        pcall(function()
+                            if not healthLabels[character] or not healthLabels[character].gui or not healthLabels[character].gui.Parent then
+                                createHealthLabel(character, player)
+                            end
+                        end)
+                    elseif healthLabels[character] then
+                        pcall(function()
+                            if healthLabels[character].gui then
+                                healthLabels[character].gui:Destroy()
+                            end
+                            healthLabels[character] = nil
+                        end)
+                    end
+                    
+                    if espSettings.showDistance then
+                        pcall(function()
+                            if not distanceLabels[character] or not distanceLabels[character].gui or not distanceLabels[character].gui.Parent then
+                                createDistanceLabel(character, player)
+                            end
+                        end)
+                    elseif distanceLabels[character] then
+                        pcall(function()
+                            if distanceLabels[character].gui then
+                                distanceLabels[character].gui:Destroy()
+                            end
+                            distanceLabels[character] = nil
+                        end)
+                    end
+                elseif highlights[character] then
+                    pcall(function()
+                        highlights[character]:Destroy()
+                        highlights[character] = nil
+                    end)
+                    
+                    pcall(function()
+                        if nameLabels[character] then
+                            nameLabels[character]:Destroy()
+                            nameLabels[character] = nil
+                        end
+                    end)
+                    
+                    pcall(function()
+                        if healthLabels[character] and healthLabels[character].gui then
+                            healthLabels[character].gui:Destroy()
+                            healthLabels[character] = nil
+                        end
+                    end)
+                    
+                    pcall(function()
+                        if distanceLabels[character] and distanceLabels[character].gui then
+                            distanceLabels[character].gui:Destroy()
+                            distanceLabels[character] = nil
+                        end
+                    end)
+                end
+            end
+        end
+    elseif noEspPlayers then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                local character = player.Character
+                pcall(function()
+                    if highlights[character] then
+                        highlights[character]:Destroy()
+                        highlights[character] = nil
+                    end
+                    if nameLabels[character] then
+                        nameLabels[character]:Destroy()
+                        nameLabels[character] = nil
+                    end
+                    if healthLabels[character] and healthLabels[character].gui then
+                        healthLabels[character].gui:Destroy()
+                        healthLabels[character] = nil
+                    end
+                    if distanceLabels[character] and distanceLabels[character].gui then
+                        distanceLabels[character].gui:Destroy()
+                        distanceLabels[character] = nil
+                    end
+                end)
+            end
+        end
+    end
+
+    for target, _ in pairs(externalTargets) do
+        pcall(function()
+            if target and (target:IsA("Model") or target:IsA("BasePart")) and target.Parent then
+                if not highlights[target] or not highlights[target].Parent then
+                    local highlight = Instance.new("Highlight")
+                    highlight.Adornee = target
+                    highlight.FillColor = espSettings.highlightColor
+                    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                    highlight.FillTransparency = espSettings.enemyTransparency
+                    highlight.OutlineTransparency = 0
+                    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                    highlight.Parent = target
+                    highlights[target] = highlight
+                else
+                    highlights[target].FillColor = espSettings.highlightColor
+                    highlights[target].FillTransparency = espSettings.enemyTransparency
+                end
+
+                if espSettings.showNames then
+                    if not nameLabels[target] or not nameLabels[target].Parent then
+                        createNameLabel(target, target.Name)
+                    end
+                elseif nameLabels[target] then
+                    nameLabels[target]:Destroy()
+                    nameLabels[target] = nil
+                end
+
+                if espSettings.showHealth then
+                    if not healthLabels[target] or not healthLabels[target].gui or not healthLabels[target].gui.Parent then
+                        createHealthLabel(target)
+                    end
+                elseif healthLabels[target] and healthLabels[target].gui then
+                    healthLabels[target].gui:Destroy()
+                    healthLabels[target] = nil
+                end
+                
+                if espSettings.showDistance then
+                    if not distanceLabels[target] or not distanceLabels[target].gui or not distanceLabels[target].gui.Parent then
+                        createDistanceLabel(target)
+                    end
+                elseif distanceLabels[target] and distanceLabels[target].gui then
+                    distanceLabels[target].gui:Destroy()
+                    distanceLabels[target] = nil
+                end
+            elseif highlights[target] then
+                highlights[target]:Destroy()
+                highlights[target] = nil
+                
+                if nameLabels[target] then
+                    nameLabels[target]:Destroy()
+                    nameLabels[target] = nil
+                end
+                
+                if healthLabels[target] and healthLabels[target].gui then
+                    healthLabels[target].gui:Destroy()
+                    healthLabels[target] = nil
+                end
+                
+                if distanceLabels[target] and distanceLabels[target].gui then
+                    distanceLabels[target].gui:Destroy()
+                    distanceLabels[target] = nil
+                end
+                
+                if not autoReaddTargets then
+                    externalTargets[target] = nil
+                end
+            end
+        end)
+    end
+end
+
+local function updateHealthLabels()
+    for target, data in pairs(healthLabels) do
+        pcall(function()
+            if data.humanoid and data.humanoid.Parent and data.label then
+                data.label.Text = math.floor(data.humanoid.Health) .. "/" .. math.floor(data.humanoid.MaxHealth)
+                
+                local healthPercent = data.humanoid.Health / data.humanoid.MaxHealth
+                if healthPercent > 0.6 then
+                    data.label.TextColor3 = Color3.fromRGB(0, 255, 0)
+                elseif healthPercent > 0.3 then
+                    data.label.TextColor3 = Color3.fromRGB(255, 255, 0)
+                else
+                    data.label.TextColor3 = Color3.fromRGB(255, 0, 0)
+                end
+            end
+        end)
+    end
+end
+
+local function safeGetPosition(part)
+    if not part then return nil end
+    
+    local success, position = pcall(function()
+        return part.Position
+    end)
+    
+    if success then
+        return position
+    else
+        return nil
+    end
+end
+
+local function isPartVisible(part)
+    if not part then return false end
+    
+    local partPosition = safeGetPosition(part)
+    if not partPosition then return false end
+    
+    if aimbotSettings.ignoreWalls then return true end
+    
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+    rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
+
+    local rayDirection = (partPosition - Camera.CFrame.Position)
+    local rayResult = Workspace:Raycast(Camera.CFrame.Position, rayDirection, rayParams)
+
+    if rayResult then
+        return rayResult.Instance:IsDescendantOf(part.Parent)
+    end
+    return false
+end
+
+local function silentAimWallCheck(part)
+    if not silentAimSettings.wallCheck then return true end
+    if not part then return false end
+    
+    local char = LocalPlayer.Character
+    if not char then return false end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+    
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = {char, Camera}
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.IgnoreWater = true
+    
+    local origin = Camera.CFrame.Position
+    local direction = (part.Position - origin)
+    
+    local result = Workspace:Raycast(origin, direction, params)
+    if not result then return true end
+    return result.Instance:IsDescendantOf(part.Parent)
+end
+
+local function isValidSilentAimTarget(p)
+    if p == LocalPlayer then return false end
+    
+    if silentAimSettings.whitelistCheck then
+        if teamSettings.playerWhitelist[p.Name] or teamSettings.playerWhitelist[p.DisplayName] then
+            return false
+        end
+    end
+    
+    if silentAimSettings.teamCheck and teamSettings.teamCheckEnabled then
+        if isOnSameTeam(p) then
+            return false
+        end
+    end
+    
+    local char = p.Character
+    if not char then return false end
+    
+    if silentAimSettings.deadCheck then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 then
+            return false
+        end
+    end
+    
+    return true
+end
+
+local function getBestTargetPart(target)
+    if not target then return nil end
+    
+    local parts = {"Head", "Torso", "UpperTorso", "LowerTorso", "Left Arm", "Right Arm", "LeftUpperArm", "RightUpperArm", "Left Leg", "Right Leg", "LeftUpperLeg", "RightUpperLeg"}
+    
+    for _, partName in ipairs(parts) do
+        local part = target:FindFirstChild(partName)
+        if part and isPartVisible(part) then
+            return part
+        end
+    end
+    
+    if aimbotSettings.ignoreWalls or aimbotSettings.fov360True then
+        for _, partName in ipairs(parts) do
+            local part = target:FindFirstChild(partName)
+            if part then
+                return part
+            end
+        end
+    end
+    
+    return nil
+end
+
+local function isInFOV(targetPosition)
+    if aimbotSettings.fov360 or aimbotSettings.fov360True then
+        return true
+    end
+    
+    local mousePos = Vector2.new(
+        Camera.ViewportSize.X / 2 + aimbotSettings.crosshairX, 
+        Camera.ViewportSize.Y / 2 + aimbotSettings.crosshairY
+    )
+    
+    local targetPos, onScreen = Camera:WorldToViewportPoint(targetPosition)
+    
+    if onScreen or aimbotSettings.fov360True then
+        local screenPos = Vector2.new(targetPos.X, targetPos.Y)
+        local dist = (screenPos - mousePos).Magnitude
+        return dist <= aimbotSettings.fovRadius
+    end
+    return false
+end
+
+local function isAimingAtTarget(target)
+    if not target then return false end
+    
+    local mousePos = Vector2.new(
+        Camera.ViewportSize.X / 2 + aimbotSettings.crosshairX, 
+        Camera.ViewportSize.Y / 2 + aimbotSettings.crosshairY
+    )
+    
+    for _, part in pairs(target:GetChildren()) do
+        if part:IsA("BasePart") then
+            local partPos, onScreen = Camera:WorldToViewportPoint(part.Position)
+            if onScreen then
+                local screenPos = Vector2.new(partPos.X, partPos.Y)
+                local dist = (screenPos - mousePos).Magnitude
+                
+                if dist <= aimbotSettings.crosshairSize * 1.5 then
+                    return true
+                end
+            end
+        end
+    end
+    
+    return false
+end
+
+local function getTargetPositionWithPrediction(target)
+    if not target then return nil end
+    
+    local targetPosition
+    local targetPart
+    
+    if target:IsA("Model") then
+        if aimbotSettings.smartMode then
+            targetPart = getBestTargetPart(target)
+        else
+            targetPart = target:FindFirstChild("Head") or target:FindFirstChild("HumanoidRootPart") or target:FindFirstChild("Torso")
+        end
+        
+        if targetPart then
+            targetPosition = safeGetPosition(targetPart)
+        end
+    end
+    
+    if not targetPosition and target:IsA("BasePart") then
+        targetPosition = safeGetPosition(target)
+    end
+    
+    if not targetPosition and target:IsA("Model") and target.PrimaryPart then
+        targetPosition = safeGetPosition(target.PrimaryPart)
+    end
+    
+    if not targetPosition and target:IsA("Model") then
+        local success, boundingBox = pcall(function() return target:GetBoundingBox() end)
+        if success then
+            targetPosition = boundingBox.Position
+        end
+    end
+    
+    if not targetPosition and target:IsA("Model") then
+        for _, part in pairs(target:GetDescendants()) do
+            if part:IsA("BasePart") then
+                targetPosition = safeGetPosition(part)
+                if targetPosition then
+                    targetPart = part
+                    break
+                end
+            end
+        end
+    end
+    
+    if not targetPosition then
+        return nil
+    end
+    
+    local targetVelocity = Vector3.new(0, 0, 0)
+    
+    if targetPart and targetPart:IsA("BasePart") then
+        targetVelocity = targetPart.Velocity
+    elseif target:IsA("Model") and target.PrimaryPart and target.PrimaryPart:IsA("BasePart") then
+        targetVelocity = target.PrimaryPart.Velocity
+    elseif target:IsA("BasePart") then
+        targetVelocity = target.Velocity
+    end
+    
+    local distance = (Camera.CFrame.Position - targetPosition).Magnitude
+    
+    if aimbotSettings.predictFarRange and distance > 100 then
+        local dropFactor = math.min(distance / 1000, 1) * aimbotSettings.farRangeOffset
+        targetPosition = targetPosition + Vector3.new(0, dropFactor * distance, 0)
+    end
+    
+    if aimbotSettings.predictMovement then
+        local predictionOffset = targetVelocity * aimbotSettings.movementPredictionFactor
+        
+        if not aimbotSettings.movementPredictionAhead then
+            predictionOffset = predictionOffset * -1
+        end
+        
+        targetPosition = targetPosition + predictionOffset
+    end
+    
+    return targetPosition
+end
+
+local function getClosestSilentAimTarget()
+    local closest, shortestDist = nil, math.huge
+    local mousePos = UserInputService:GetMouseLocation()
+    local viewportSize = Camera.ViewportSize
+    local fovRadius = math.min(viewportSize.X, viewportSize.Y) * (silentAimSettings.fov / 120)
+    
+    for _, p in pairs(Players:GetPlayers()) do
+        if not isValidSilentAimTarget(p) then continue end
+        local head = p.Character:FindFirstChild("Head")
+        if not head then continue end
+
+        local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+        if not onScreen then continue end
+        
+        local screenPosition = Vector2.new(screenPos.X, screenPos.Y)
+        local distance = (screenPosition - mousePos).Magnitude
+        
+        if distance > fovRadius then continue end
+        if distance >= shortestDist then continue end
+        if not silentAimWallCheck(head) then continue end
+        
+        shortestDist = distance
+        closest = head
+    end
+    
+    if silentAimSettings.targetExternalTargets then
+        for target, _ in pairs(externalTargets) do
+            if target and target.Parent then
+                local targetPart = nil
+                
+                if target:IsA("Model") then
+                    if silentAimSettings.deadCheck then
+                        local hum = target:FindFirstChildOfClass("Humanoid")
+                        if hum and hum.Health <= 0 then
+                            continue
+                        end
+                    end
+                    
+                    targetPart = target:FindFirstChild("Head") or target:FindFirstChild("HumanoidRootPart")
+                elseif target:IsA("BasePart") then
+                    targetPart = target
+                end
+                
+                if targetPart then
+                    local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+                    if onScreen then
+                        local screenPosition = Vector2.new(screenPos.X, screenPos.Y)
+                        local distance = (screenPosition - mousePos).Magnitude
+                        
+                        if distance <= fovRadius and distance < shortestDist then
+                            if silentAimWallCheck(targetPart) then
+                                shortestDist = distance
+                                closest = targetPart
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return closest
+end
+
+local function updateFOVCircle()
+    if fovCircle then
+        fovCircle.Size = UDim2.new(0, aimbotSettings.fovRadius * 2, 0, aimbotSettings.fovRadius * 2)
+        fovCircle.Position = UDim2.new(0.5, aimbotSettings.crosshairX, 0.5, aimbotSettings.crosshairY)
+        fovCircle.Visible = aimbotSettings.enabled and aimbotSettings.showFOVCircle and not (aimbotSettings.fov360 or aimbotSettings.fov360True)
+    end
+end
+
+local function createFOVCircle()
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "AimThresholdCircle"
+    gui.ResetOnSpawn = false
+    gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+    fovCircle = Instance.new("Frame")
+    fovCircle.Size = UDim2.new(0, aimbotSettings.fovRadius * 2, 0, aimbotSettings.fovRadius * 2)
+    fovCircle.Position = UDim2.new(0.5, aimbotSettings.crosshairX, 0.5, aimbotSettings.crosshairY)
+    fovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+    fovCircle.BackgroundTransparency = 1
+    fovCircle.Visible = aimbotSettings.enabled and aimbotSettings.showFOVCircle and not (aimbotSettings.fov360 or aimbotSettings.fov360True)
+
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(1, 0)
+    uiCorner.Parent = fovCircle
+
+    local outline = Instance.new("UIStroke")
+    outline.Thickness = 1
+    outline.Color = Color3.fromRGB(255, 255, 255)
+    outline.Parent = fovCircle
+
+    fovCircle.Parent = gui
+    return gui
+end
+
+local function createCrosshair()
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "AimCrosshair"
+    gui.ResetOnSpawn = false
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+    local crosshairFrame = Instance.new("Frame")
+    crosshairFrame.Size = UDim2.new(0, 20, 0, 20)
+    crosshairFrame.Position = UDim2.new(0.5, aimbotSettings.crosshairX, 0.5, aimbotSettings.crosshairY)
+    crosshairFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    crosshairFrame.BackgroundTransparency = 1
+    crosshairFrame.Visible = aimbotSettings.showCrosshair
+    crosshairFrame.Parent = gui
+
+    if aimbotSettings.crosshairType == "cross" then
+        local horizontalLine = Instance.new("Frame")
+        horizontalLine.Size = UDim2.new(0, aimbotSettings.crosshairSize, 0, 2)
+        horizontalLine.Position = UDim2.new(0.5, 0, 0.5, 0)
+        horizontalLine.AnchorPoint = Vector2.new(0.5, 0.5)
+        horizontalLine.BackgroundColor3 = aimbotSettings.crosshairColor
+        horizontalLine.BackgroundTransparency = aimbotSettings.crosshairTransparency
+        horizontalLine.BorderSizePixel = 0
+        horizontalLine.ZIndex = 10
+        horizontalLine.Parent = crosshairFrame
+
+        local verticalLine = Instance.new("Frame")
+        verticalLine.Size = UDim2.new(0, 2, 0, aimbotSettings.crosshairSize)
+        verticalLine.Position = UDim2.new(0.5, 0, 0.5, 0)
+        verticalLine.AnchorPoint = Vector2.new(0.5, 0.5)
+        verticalLine.BackgroundColor3 = aimbotSettings.crosshairColor
+        verticalLine.BackgroundTransparency = aimbotSettings.crosshairTransparency
+        verticalLine.BorderSizePixel = 0
+        verticalLine.ZIndex = 10
+        verticalLine.Parent = crosshairFrame
+
+        return {
+            gui = gui, 
+            frame = crosshairFrame, 
+            horizontal = horizontalLine, 
+            vertical = verticalLine, 
+            circle = nil
+        }
+    else
+        local circleFrame = Instance.new("Frame")
+        circleFrame.Size = UDim2.new(0, aimbotSettings.crosshairSize, 0, aimbotSettings.crosshairSize)
+        circleFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+        circleFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+        circleFrame.BackgroundColor3 = aimbotSettings.crosshairColor
+        circleFrame.BackgroundTransparency = aimbotSettings.crosshairTransparency
+        circleFrame.BorderSizePixel = 0
+        circleFrame.ZIndex = 10
+        circleFrame.Parent = crosshairFrame
+
+        local uiCorner = Instance.new("UICorner")
+        uiCorner.CornerRadius = UDim.new(1, 0)
+        uiCorner.Parent = circleFrame
+
+        return {
+            gui = gui, 
+            frame = crosshairFrame, 
+            horizontal = nil, 
+            vertical = nil, 
+            circle = circleFrame
+        }
+    end
+end
+
+local function updateCrosshair(crosshair)
+    if not crosshair or not crosshair.frame then 
+        crosshairObj = createCrosshair()
+        crosshair = crosshairObj
+        if not crosshair or not crosshair.frame then
+            return
+        end
+    end
+    
+    crosshair.frame.Position = UDim2.new(0.5, aimbotSettings.crosshairX, 0.5, aimbotSettings.crosshairY)
+    crosshair.frame.Visible = aimbotSettings.showCrosshair
+    
+    if aimbotSettings.crosshairType == "cross" then
+        if crosshair.horizontal and crosshair.vertical then
+            crosshair.horizontal.BackgroundColor3 = aimbotSettings.crosshairColor
+            crosshair.vertical.BackgroundColor3 = aimbotSettings.crosshairColor
+            crosshair.horizontal.BackgroundTransparency = aimbotSettings.crosshairTransparency
+            crosshair.vertical.BackgroundTransparency = aimbotSettings.crosshairTransparency
+            crosshair.horizontal.Size = UDim2.new(0, aimbotSettings.crosshairSize, 0, 2)
+            crosshair.vertical.Size = UDim2.new(0, 2, 0, aimbotSettings.crosshairSize)
+        else
+            local horizontalLine = Instance.new("Frame")
+            horizontalLine.Size = UDim2.new(0, aimbotSettings.crosshairSize, 0, 2)
+            horizontalLine.Position = UDim2.new(0.5, 0, 0.5, 0)
+            horizontalLine.AnchorPoint = Vector2.new(0.5, 0.5)
+            horizontalLine.BackgroundColor3 = aimbotSettings.crosshairColor
+            horizontalLine.BackgroundTransparency = aimbotSettings.crosshairTransparency
+            horizontalLine.BorderSizePixel = 0
+            horizontalLine.ZIndex = 10
+            horizontalLine.Parent = crosshair.frame
+
+            local verticalLine = Instance.new("Frame")
+            verticalLine.Size = UDim2.new(0, 2, 0, aimbotSettings.crosshairSize)
+            verticalLine.Position = UDim2.new(0.5, 0, 0.5, 0)
+            verticalLine.AnchorPoint = Vector2.new(0.5, 0.5)
+            verticalLine.BackgroundColor3 = aimbotSettings.crosshairColor
+            verticalLine.BackgroundTransparency = aimbotSettings.crosshairTransparency
+            verticalLine.BorderSizePixel = 0
+            verticalLine.ZIndex = 10
+            verticalLine.Parent = crosshair.frame
+            
+            crosshair.horizontal = horizontalLine
+            crosshair.vertical = verticalLine
+        end
+        
+        if crosshair.circle then
+            crosshair.circle.Visible = false
+        end
+    else
+        if crosshair.horizontal and crosshair.vertical then
+            crosshair.horizontal.Visible = false
+            crosshair.vertical.Visible = false
+        end
+        
+        if crosshair.circle then
+            crosshair.circle.Visible = true
+            crosshair.circle.BackgroundColor3 = aimbotSettings.crosshairColor
+            crosshair.circle.BackgroundTransparency = aimbotSettings.crosshairTransparency
+            crosshair.circle.Size = UDim2.new(0, aimbotSettings.crosshairSize, 0, aimbotSettings.crosshairSize)
+        else
+            local circleFrame = Instance.new("Frame")
+            circleFrame.Size = UDim2.new(0, aimbotSettings.crosshairSize, 0, aimbotSettings.crosshairSize)
+            circleFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+            circleFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+            circleFrame.BackgroundColor3 = aimbotSettings.crosshairColor
+            circleFrame.BackgroundTransparency = aimbotSettings.crosshairTransparency
+            circleFrame.BorderSizePixel = 0
+            circleFrame.ZIndex = 10
+            circleFrame.Parent = crosshair.frame
+
+            local uiCorner = Instance.new("UICorner")
+            uiCorner.CornerRadius = UDim.new(1, 0)
+            uiCorner.Parent = circleFrame
+            
+            crosshair.circle = circleFrame
+        end
+    end
+end
+
+local function getClosestTarget()
+    local targets = {}
+    
+    if not aimbotSettings.noAimbotPlayers then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+                if humanoid and humanoid.Health > 0 then
+                    local isTeammate = isOnSameTeam(player)
+                    if (not teamSettings.teamCheckEnabled) or 
+                       (teamSettings.teamCheckEnabled and teamSettings.targetEnemiesOnly and not isTeammate) or
+                       (teamSettings.teamCheckEnabled and not teamSettings.targetEnemiesOnly) then
+                        table.insert(targets, player.Character)
+                    end
+                end
+            end
+        end
+    end
+    
+    if aimbotSettings.targetExternalTargets then
+        for target, _ in pairs(externalTargets) do
+            if target and target.Parent then
+                local isValid = false
+                
+                if aimbotSettings.externalTargetIsModel then
+                    isValid = target:IsA("Model") or target:IsA("BasePart")
+                else
+                    isValid = target:IsA("BasePart")
+                end
+                
+                if isValid then
+                    local humanoid = target:FindFirstChildOfClass("Humanoid")
+                    if not humanoid or (humanoid and humanoid.Health > 0) then
+                        table.insert(targets, target)
+                    end
+                end
+            end
+        end
+    end
+    
+    local closestTarget = nil
+    local closestDistance = math.huge
+    
+    if aimbotSettings.currentTarget and aimbotSettings.aimFlexibility then
+        aimbotSettings.isAimingAtTarget = isAimingAtTarget(aimbotSettings.currentTarget)
+        
+        if aimbotSettings.isAimingAtTarget then
+            return aimbotSettings.currentTarget
+        end
+    end
+    
+    if aimbotSettings.persistentAim and aimbotSettings.currentTarget and 
+       tick() - aimbotSettings.lastTargetTime < aimbotSettings.targetTimeout then
+        if aimbotSettings.currentTarget.Parent then
+            local targetPosition = getTargetPositionWithPrediction(aimbotSettings.currentTarget)
+            if targetPosition and isInFOV(targetPosition) then
+                return aimbotSettings.currentTarget
+            end
+        end
+    end
+    
+    if aimbotSettings.targetMode == "crosshair" then
+        local mousePos = Vector2.new(
+            Camera.ViewportSize.X / 2 + aimbotSettings.crosshairX, 
+            Camera.ViewportSize.Y / 2 + aimbotSettings.crosshairY
+        )
+        
+        for _, target in ipairs(targets) do
+            local targetPosition = getTargetPositionWithPrediction(target)
+            
+            if targetPosition then
+                local refPart
+                if target:IsA("BasePart") then
+                    refPart = target
+                else
+                    refPart = target:FindFirstChildOfClass("BasePart") or 
+                              target:FindFirstChild("HumanoidRootPart") or 
+                              target:FindFirstChild("Head") or 
+                              target:FindFirstChild("Torso")
+                end
+                
+                local isVisible = aimbotSettings.ignoreWalls or aimbotSettings.fov360True or (refPart and isPartVisible(refPart))
+                local inFov = isInFOV(targetPosition)
+                
+                if (isVisible or aimbotSettings.fov360True) and inFov then
+                    local targetPos, onScreen = Camera:WorldToViewportPoint(targetPosition)
+                    
+                    if onScreen or aimbotSettings.fov360True then
+                        local screenPos = Vector2.new(targetPos.X, targetPos.Y)
+                        local dist = (screenPos - mousePos).Magnitude
+                        local camDist = (Camera.CFrame.Position - targetPosition).Magnitude
+                        
+                        if camDist <= aimbotSettings.lockDistance and dist < closestDistance then
+                            closestTarget = target
+                            closestDistance = dist
+                        end
+                    end
+                end
+            end
+        end
+    else
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            for _, target in ipairs(targets) do
+                local targetPosition = getTargetPositionWithPrediction(target)
+                
+                if targetPosition then
+                    local refPart
+                    if target:IsA("BasePart") then
+                        refPart = target
+                    else
+                        refPart = target:FindFirstChildOfClass("BasePart") or 
+                                  target:FindFirstChild("HumanoidRootPart") or 
+                                  target:FindFirstChild("Head") or 
+                                  target:FindFirstChild("Torso")
+                    end
+                    
+                    local isVisible = aimbotSettings.ignoreWalls or aimbotSettings.fov360True or (refPart and isPartVisible(refPart))
+                    local inFov = isInFOV(targetPosition)
+                    
+                    if (isVisible or aimbotSettings.fov360True) and inFov then
+                        local dist = (LocalPlayer.Character.HumanoidRootPart.Position - targetPosition).Magnitude
+                        
+                        if dist <= aimbotSettings.lockDistance and dist < closestDistance then
+                            closestTarget = target
+                            closestDistance = dist
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    if closestTarget then
+        aimbotSettings.currentTarget = closestTarget
+        aimbotSettings.lastTargetTime = tick()
+    else
+        aimbotSettings.currentTarget = nil
+    end
+    
+    return closestTarget
+end
+
+local function isCrosshairOnTarget(target)
+    if not target then return false end
+    
+    local mousePos = Vector2.new(
+        Camera.ViewportSize.X / 2 + aimbotSettings.crosshairX, 
+        Camera.ViewportSize.Y / 2 + aimbotSettings.crosshairY
+    )
+    
+    local targetPosition = getTargetPositionWithPrediction(target)
+    
+    if targetPosition then
+        local screenPos, onScreen = Camera:WorldToViewportPoint(targetPosition)
+        if onScreen then
+            local targetScreenPos = Vector2.new(screenPos.X, screenPos.Y)
+            local distance = (targetScreenPos - mousePos).Magnitude
+            
+            return distance <= aimbotSettings.autoShootTolerance
+        end
+    end
+    
+    return false
+end
+
+local function simulateButtonPress(button)
+    local currentTime = tick()
+    if currentTime - aimbotSettings.lastShootTime < aimbotSettings.shootCooldown then
+        return
+    end
+    
+    aimbotSettings.lastShootTime = currentTime
+    
+    if button == "MouseButton1" then
+        pcall(function()
+            VirtualInputManager:SendMouseButtonEvent(
+                Camera.ViewportSize.X / 2 + aimbotSettings.crosshairX,
+                Camera.ViewportSize.Y / 2 + aimbotSettings.crosshairY,
+                0, true, game, 0
+            )
+            wait(aimbotSettings.shootDelay)
+            VirtualInputManager:SendMouseButtonEvent(
+                Camera.ViewportSize.X / 2 + aimbotSettings.crosshairX,
+                Camera.ViewportSize.Y / 2 + aimbotSettings.crosshairY,
+                0, false, game, 0
+            )
+        end)
+        
+        pcall(function()
+            mouse1click()
+        end)
+    elseif button == "MouseButton2" then
+        pcall(function()
+            VirtualInputManager:SendMouseButtonEvent(
+                Camera.ViewportSize.X / 2 + aimbotSettings.crosshairX,
+                Camera.ViewportSize.Y / 2 + aimbotSettings.crosshairY,
+                1, true, game, 0
+            )
+            wait(aimbotSettings.shootDelay)
+            VirtualInputManager:SendMouseButtonEvent(
+                Camera.ViewportSize.X / 2 + aimbotSettings.crosshairX,
+                Camera.ViewportSize.Y / 2 + aimbotSettings.crosshairY,
+                1, false, game, 0
+            )
+        end)
+        
+        pcall(function()
+            mouse2click()
+        end)
+    else
+        pcall(function()
+            local keyCode = Enum.KeyCode[button]
+            if keyCode then
+                VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+                wait(aimbotSettings.shootDelay)
+                VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+            end
+        end)
+    end
+end
+
+local function buildTeleportTargetList()
+    teleportSettings.targetList = {}
+    
+    if not aimbotSettings.noAimbotPlayers then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+                if humanoid and humanoid.Health > 0 then
+                    local isTeammate = isOnSameTeam(player)
+                    if (not teamSettings.teamCheckEnabled) or 
+                       (teamSettings.teamCheckEnabled and teamSettings.targetEnemiesOnly and not isTeammate) or
+                       (teamSettings.teamCheckEnabled and not teamSettings.targetEnemiesOnly) then
+                        table.insert(teleportSettings.targetList, player.Character)
+                    end
+                end
+            end
+        end
+    end
+    
+    for target, _ in pairs(externalTargets) do
+        if target and target.Parent then
+            local isValid = target:IsA("Model") or target:IsA("BasePart")
+            if isValid then
+                local humanoid = target:FindFirstChildOfClass("Humanoid")
+                if not humanoid or (humanoid and humanoid.Health > 0) then
+                    table.insert(teleportSettings.targetList, target)
+                end
+            end
+        end
+    end
+    
+    return #teleportSettings.targetList
+end
+
+local function getTeleportPosition(target)
+    if not target then return nil end
+    
+    local targetPos
+    
+    if target:IsA("Model") then
+        local hrp = target:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            targetPos = hrp.Position
+        elseif target.PrimaryPart then
+            targetPos = target.PrimaryPart.Position
+        else
+            local success, cframe = pcall(function() return target:GetBoundingBox() end)
+            if success and cframe then
+                targetPos = cframe.Position
+            else
+                for _, part in pairs(target:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        targetPos = part.Position
+                        break
+                    end
+                end
+            end
+        end
+    elseif target:IsA("BasePart") then
+        targetPos = target.Position
+    end
+    
+    if targetPos then
+        return targetPos + teleportSettings.teleportOffset
+    end
+    
+    return nil
+end
+
+local function teleportToNextTarget()
+    local currentTime = tick()
+    if currentTime - teleportSettings.lastTeleport < teleportSettings.cooldown then
+        showMessage("Teleport on cooldown!", 1)
+        return
+    end
+    
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        showMessage("Character not found!", 2)
+        return
+    end
+    
+    local targetCount = buildTeleportTargetList()
+    
+    if targetCount == 0 then
+        showMessage("No valid targets found!", 2)
+        return
+    end
+    
+    if teleportSettings.currentIndex > targetCount then
+        teleportSettings.currentIndex = 1
+    end
+    
+    local target = teleportSettings.targetList[teleportSettings.currentIndex]
+    local teleportPos = getTeleportPosition(target)
+    
+    if teleportPos then
+        if teleportSettings.safetyCheck then
+            local rayParams = RaycastParams.new()
+            rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+            rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
+            
+            local rayResult = Workspace:Raycast(teleportPos + Vector3.new(0, 10, 0), Vector3.new(0, -20, 0), rayParams)
+            if rayResult then
+                teleportPos = rayResult.Position + Vector3.new(0, 3, 0)
+            end
+        end
+        
+        pcall(function()
+            if LocalPlayer.Character.PrimaryPart then
+                LocalPlayer.Character:SetPrimaryPartCFrame(CFrame.new(teleportPos))
+            else
+                LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(teleportPos)
+            end
+        end)
+        
+        if teleportSettings.autoRotate and target:IsA("Model") then
+            local targetHRP = target:FindFirstChild("HumanoidRootPart")
+            if targetHRP then
+                local lookVector = (targetHRP.Position - teleportPos).Unit
+                pcall(function()
+                    if LocalPlayer.Character.PrimaryPart then
+                        LocalPlayer.Character:SetPrimaryPartCFrame(CFrame.new(teleportPos, teleportPos + lookVector))
+                    else
+                        LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(teleportPos, teleportPos + lookVector)
+                    end
+                end)
+            end
+        end
+        
+        teleportSettings.lastTeleport = currentTime
+        teleportSettings.currentIndex = teleportSettings.currentIndex + 1
+        
+        local targetName = target.Name
+        if target:IsA("Model") then
+            local player = Players:GetPlayerFromCharacter(target)
+            if player then
+                targetName = player.DisplayName or player.Name
+            end
+        end
+        
+        showMessage("Teleported to: " .. targetName .. " (" .. teleportSettings.currentIndex - 1 .. "/" .. targetCount .. ")", 2)
+    else
+        showMessage("Failed to get target position!", 2)
+        teleportSettings.currentIndex = teleportSettings.currentIndex + 1
+    end
+end
+
+local function getTargetUnderCrosshair()
+    local targets = {}
+    
+    if not aimbotSettings.noAimbotPlayers then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+                if humanoid and humanoid.Health > 0 then
+                    local isTeammate = isOnSameTeam(player)
+                    if (not teamSettings.teamCheckEnabled) or 
+                       (teamSettings.teamCheckEnabled and teamSettings.targetEnemiesOnly and not isTeammate) or
+                       (teamSettings.teamCheckEnabled and not teamSettings.targetEnemiesOnly) then
+                        table.insert(targets, player.Character)
+                    end
+                end
+            end
+        end
+    end
+    
+    for target, _ in pairs(externalTargets) do
+        if target and target.Parent then
+            local isValid = target:IsA("Model") or target:IsA("BasePart")
+            if isValid then
+                local humanoid = target:FindFirstChildOfClass("Humanoid")
+                if not humanoid or (humanoid and humanoid.Health > 0) then
+                    table.insert(targets, target)
+                end
+            end
+        end
+    end
+    
+    local mousePos = Vector2.new(
+        Camera.ViewportSize.X / 2 + aimbotSettings.crosshairX, 
+        Camera.ViewportSize.Y / 2 + aimbotSettings.crosshairY
+    )
+    
+    local closestTarget = nil
+    local closestDistance = math.huge
+    
+    for _, target in ipairs(targets) do
+        local targetPosition = getTeleportPosition(target)
+        
+        if targetPosition then
+            local screenPos, onScreen = Camera:WorldToViewportPoint(targetPosition)
+            
+            if onScreen then
+                local targetScreenPos = Vector2.new(screenPos.X, screenPos.Y)
+                local distance = (targetScreenPos - mousePos).Magnitude
+                
+                if distance < closestDistance and distance <= teleportSettings.detectionRadius then
+                    closestTarget = target
+                    closestDistance = distance
+                end
+            end
+        end
+    end
+    
+    return closestTarget
+end
+
+local function teleportToCrosshairTarget()
+    local currentTime = tick()
+    if currentTime - teleportSettings.lastTeleport < teleportSettings.cooldown then
+        showMessage("Teleport on cooldown!", 1)
+        return
+    end
+    
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        showMessage("Character not found!", 2)
+        return
+    end
+    
+    local target = getTargetUnderCrosshair()
+    
+    if not target then
+        showMessage("No target under crosshair!", 2)
+        return
+    end
+    
+    local teleportPos = getTeleportPosition(target)
+    
+    if teleportPos then
+        if teleportSettings.safetyCheck then
+            local rayParams = RaycastParams.new()
+            rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+            rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
+            
+            local rayResult = Workspace:Raycast(teleportPos + Vector3.new(0, 10, 0), Vector3.new(0, -20, 0), rayParams)
+            if rayResult then
+                teleportPos = rayResult.Position + Vector3.new(0, 3, 0)
+            end
+        end
+        
+        pcall(function()
+            if LocalPlayer.Character.PrimaryPart then
+                LocalPlayer.Character:SetPrimaryPartCFrame(CFrame.new(teleportPos))
+            else
+                LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(teleportPos)
+            end
+        end)
+        
+        if teleportSettings.autoRotate and target:IsA("Model") then
+            local targetHRP = target:FindFirstChild("HumanoidRootPart")
+            if targetHRP then
+                local lookVector = (targetHRP.Position - teleportPos).Unit
+                pcall(function()
+                    if LocalPlayer.Character.PrimaryPart then
+                        LocalPlayer.Character:SetPrimaryPartCFrame(CFrame.new(teleportPos, teleportPos + lookVector))
+                    else
+                        LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(teleportPos, teleportPos + lookVector)
+                    end
+                end)
+            end
+        end
+        
+        teleportSettings.lastTeleport = currentTime
+        
+        local targetName = target.Name
+        if target:IsA("Model") then
+            local player = Players:GetPlayerFromCharacter(target)
+            if player then
+                targetName = player.DisplayName or player.Name
+            end
+        end
+        
+        showMessage("Teleported to: " .. targetName, 2)
+    else
+        showMessage("Failed to get target position!", 2)
+    end
+end
+
+local function isValidEspTarget(instance)
+    if not instance then return false end
+    
+    if instance:IsA("Model") then
+        return instance:FindFirstChild("HumanoidRootPart") or 
+               instance:FindFirstChild("Head") or 
+               instance:FindFirstChildOfClass("Humanoid")
+    end
+    
+    if instance:IsA("BasePart") then
+        return true
+    end
+    
+    return false
+end
+
+local function findValidTargetsRecursive(parent, targets, depth)
+    depth = depth or 0
+    if depth > 10 then return end
+    
+    for _, child in ipairs(parent:GetChildren()) do
+        if isValidEspTarget(child) then
+            table.insert(targets, child)
+        end
+        
+        findValidTargetsRecursive(child, targets, depth + 1)
+    end
+end
+
+local function resolvePath(path)
+    if typeof(path) == "string" then
+        local parts = path:split(".")
+        local current = game
+        
+        if parts[1]:lower() == "workspace" then
+            current = workspace
+            table.remove(parts, 1)
+        elseif parts[1]:lower() == "game" then
+            table.remove(parts, 1)
+        end
+        
+        for _, part in ipairs(parts) do
+            if current then
+                current = current:FindFirstChild(part)
+            else
+                break
+            end
+        end
+        
+        return current
+    end
+    
+    return nil
+end
+
+local function findTargetByName(name)
+    local foundTargets = {}
+    
+    local directTarget = resolvePath(name)
+    if directTarget and (directTarget:IsA("Model") or directTarget:IsA("BasePart")) then
+        table.insert(foundTargets, directTarget)
+        return foundTargets
+    end
+    
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if (obj:IsA("Model") or obj:IsA("BasePart")) and obj.Name:lower():find(name:lower()) then
+            table.insert(foundTargets, obj)
+        end
+    end
+    
+    return foundTargets
+end
+
+local function findClosestFolderAndAddChildren(query)
+    local closestFolder = nil
+    local closestDistance = math.huge
+    
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Folder") or obj:IsA("Model") then
+            local nameLower = obj.Name:lower()
+            local queryLower = query:lower()
+            
+            if nameLower:find(queryLower) then
+                local distance = #nameLower - #queryLower
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestFolder = obj
+                end
+            end
+        end
+    end
+    
+    if closestFolder then
+        local validTargets = {}
+        findValidTargetsRecursive(closestFolder, validTargets)
+        
+        local count = 0
+        for _, target in ipairs(validTargets) do
+            if not externalTargets[target] then
+                externalTargets[target] = true
+                count = count + 1
+            end
+        end
+        
+        updateESP()
+        return true, count .. " targets added from " .. closestFolder.Name
+    end
+    
+    return false, "No matching folder found"
+end
+
+local function addExternalTarget(name)
+    local targets = findTargetByName(name)
+    
+    if #targets > 0 then
+        local addedCount = 0
+        for _, target in ipairs(targets) do
+            if not externalTargets[target] then
+                externalTargets[target] = true
+                addedCount = addedCount + 1
+            end
+        end
+        
+        updateESP()
+        return true, addedCount .. " target(s) added: " .. targets[1].Name .. (addedCount > 1 and " and others" or "")
+    end
+    
+    return false, "Target not found"
+end
+
+local function addAllChildrenAsTargets(path)
+    local parent = resolvePath(path)
+    
+    if not parent then
+        local success, message = findClosestFolderAndAddChildren(path)
+        if success then
+            return success, message
+        end
+        
+        local targets = findTargetByName(path)
+        if #targets > 0 then
+            parent = targets[1]
+        end
+    end
+    
+    if parent then
+        local validTargets = {}
+        findValidTargetsRecursive(parent, validTargets)
+        
+        local count = 0
+        for _, target in ipairs(validTargets) do
+            if not externalTargets[target] then
+                externalTargets[target] = true
+                count = count + 1
+            end
+        end
+        
+        updateESP()
+        return true, count .. " targets added from " .. parent.Name
+    end
+    
+    return false, "Parent not found"
+end
+
+local function removeAllExternalTargets()
+    for target, _ in pairs(externalTargets) do
+        pcall(function()
+            if highlights[target] then
+                highlights[target]:Destroy()
+                highlights[target] = nil
+            end
+            
+            if nameLabels[target] then
+                nameLabels[target]:Destroy()
+                nameLabels[target] = nil
+            end
+            
+            if healthLabels[target] and healthLabels[target].gui then
+                healthLabels[target].gui:Destroy()
+                healthLabels[target] = nil
+            end
+            
+            if distanceLabels[target] and distanceLabels[target].gui then
+                distanceLabels[target].gui:Destroy()
+                distanceLabels[target] = nil
+            end
+        end)
+    end
+    externalTargets = {}
+    return true, "All external targets removed"
+end
+
+local function checkAndReaddTargets()
+    if not autoReaddTargets then return end
+    
+    local missingTargets = {}
+    
+    for target, _ in pairs(externalTargets) do
+        if not target or not target.Parent then
+            table.insert(missingTargets, target)
+        end
+    end
+    
+    for _, target in ipairs(missingTargets) do
+        pcall(function()
+            externalTargets[target] = nil
+            
+            if highlights[target] then
+                highlights[target]:Destroy()
+                highlights[target] = nil
+            end
+            
+            if nameLabels[target] then
+                nameLabels[target]:Destroy()
+                nameLabels[target] = nil
+            end
+            
+            if healthLabels[target] and healthLabels[target].gui then
+                healthLabels[target].gui:Destroy()
+                healthLabels[target] = nil
+            end
+            
+            if distanceLabels[target] and distanceLabels[target].gui then
+                distanceLabels[target].gui:Destroy()
+                distanceLabels[target] = nil
+            end
+        end)
+    end
+    
+    for _, target in ipairs(missingTargets) do
+        if target and target.Name then
+            local targetName = target.Name
+            local newTargets = findTargetByName(targetName)
+            
+            for _, newTarget in ipairs(newTargets) do
+                if newTarget and newTarget.Parent and not externalTargets[newTarget] then
+                    externalTargets[newTarget] = true
+                end
+            end
+        end
+    end
+    
+    updateESP()
+end
+
+local function addTeamToWhitelist(teamName)
+    if teamName and teamName ~= "" then
+        teamSettings.teamWhitelist[teamName] = true
+        return true, "Added team to whitelist: " .. teamName
+    end
+    return false, "Invalid team name"
+end
+
+local function removeTeamFromWhitelist(teamName)
+    if teamSettings.teamWhitelist[teamName] then
+        teamSettings.teamWhitelist[teamName] = nil
+        return true, "Removed team from whitelist: " .. teamName
+    end
+    return false, "Team not found in whitelist"
+end
+
+local function clearTeamWhitelist()
+    teamSettings.teamWhitelist = {}
+    return true, "Team whitelist cleared"
+end
+
+local function addPlayerToWhitelist(playerName)
+    if playerName and playerName ~= "" then
+        local found = false
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player.Name:lower():find(playerName:lower()) or 
+               (player.DisplayName and player.DisplayName:lower():find(playerName:lower())) then
+                teamSettings.playerWhitelist[player.Name] = true
+                found = true
+            end
+        end
+        
+        if found then
+            return true, "Added player(s) to whitelist matching: " .. playerName
+        else
+            teamSettings.playerWhitelist[playerName] = true
+            return true, "Added name to whitelist: " .. playerName
+        end
+    end
+    return false, "Invalid player name"
+end
+
+local function removePlayerFromWhitelist(playerName)
+    local removed = false
+    
+    if teamSettings.playerWhitelist[playerName] then
+        teamSettings.playerWhitelist[playerName] = nil
+        removed = true
+    else
+        for name, _ in pairs(teamSettings.playerWhitelist) do
+            if name:lower():find(playerName:lower()) then
+                teamSettings.playerWhitelist[name] = nil
+                removed = true
+            end
+        end
+    end
+    
+    if removed then
+        return true, "Removed player(s) from whitelist matching: " .. playerName
+    end
+    return false, "Player not found in whitelist"
+end
+
+local function clearPlayerWhitelist()
+    teamSettings.playerWhitelist = {}
+    return true, "Player whitelist cleared"
+end
+
+local function addAutoTarget(name)
+    if name and name ~= "" then
+        autoTargetSystem.targets[name] = true
+        return true, "Added to auto target: " .. name
+    end
+    return false, "Invalid target name"
+end
+
+local function removeAutoTarget(name)
+    if autoTargetSystem.targets[name] then
+        autoTargetSystem.targets[name] = nil
+        return true, "Removed from auto target: " .. name
+    end
+    
+    for targetName, _ in pairs(autoTargetSystem.targets) do
+        if targetName:lower():find(name:lower()) then
+            autoTargetSystem.targets[targetName] = nil
+            return true, "Removed from auto target: " .. targetName
+        end
+    end
+    
+    return false, "Target not found in auto targets"
+end
+
+local function clearAutoTargets()
+    autoTargetSystem.targets = {}
+    return true, "All auto targets cleared"
+end
+
+local function processAutoTargets()
+    if not autoTargetSystem.enabled then return end
+    
+    local currentTime = tick()
+    if currentTime - autoTargetSystem.lastUpdate < autoTargetSystem.delay then
+        return
+    end
+    
+    autoTargetSystem.lastUpdate = currentTime
+    
+    for targetName, _ in pairs(autoTargetSystem.targets) do
+        addExternalTarget(targetName)
+    end
+end
+
+local function smoothCameraTransition(targetCFrame)
+    if not shiftLockSettings.smoothTransition then
+        Camera.CFrame = targetCFrame
+        return
+    end
+    
+    local tweenInfo = TweenInfo.new(
+        shiftLockSettings.transitionSpeed,
+        Enum.EasingStyle.Sine,
+        Enum.EasingDirection.Out
+    )
+    
+    local tween = TweenService:Create(Camera, tweenInfo, {CFrame = targetCFrame})
+    tween:Play()
+end
+
+local function updateCharacterOrientation()
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+    
+    local humanoidRootPart = LocalPlayer.Character.HumanoidRootPart
+    local lookVector = Camera.CFrame.LookVector
+    local flatLookVector = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
+    
+    humanoidRootPart.CFrame = CFrame.new(
+        humanoidRootPart.Position, 
+        humanoidRootPart.Position + flatLookVector
+    )
+end
+
+local function updateCustomShiftLock()
+    if not shiftLockSettings.enabled or not LocalPlayer.Character then return end
+    
+    local character = LocalPlayer.Character
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return end
+    
+    local humanoid = character:FindFirstChild("Humanoid")
+    if not humanoid then return end
+    
+    local currentTime = tick()
+    if currentTime - shiftLockSettings.lastUpdateTime < shiftLockSettings.updateInterval then
+        return
+    end
+    shiftLockSettings.lastUpdateTime = currentTime
+    
+    if not shiftLockSettings.fixedReferencePoint then
+        shiftLockSettings.fixedReferencePoint = humanoidRootPart.Position + Vector3.new(0, 0, -10)
+    end
+    
+    local mousePos = UserInputService:GetMouseLocation()
+    
+    if (mousePos - shiftLockSettings.lastMousePosition).Magnitude > 5 then
+        local mouseRay = Camera:ScreenPointToRay(mousePos.X, mousePos.Y)
+        local mouseDirection = mouseRay.Direction.Unit
+        
+        local flatDirection = Vector3.new(mouseDirection.X, 0, mouseDirection.Z).Unit
+        
+        shiftLockSettings.referenceDirection = shiftLockSettings.referenceDirection:Lerp(
+            flatDirection, 
+            shiftLockSettings.stabilizationFactor
+        )
+        
+        shiftLockSettings.fixedReferencePoint = humanoidRootPart.Position + shiftLockSettings.referenceDirection * 10
+        
+        shiftLockSettings.lastMousePosition = mousePos
+    end
+    
+    humanoidRootPart.CFrame = CFrame.new(
+        humanoidRootPart.Position, 
+        humanoidRootPart.Position + shiftLockSettings.referenceDirection
+    )
+    
+    local cameraOffset = shiftLockSettings.referenceDirection * -shiftLockSettings.zoomDistance + 
+                         Vector3.new(0, shiftLockSettings.zoomDistance * 0.4, 0)
+    
+    local targetCFrame = CFrame.new(
+        humanoidRootPart.Position + cameraOffset, 
+        shiftLockSettings.fixedReferencePoint
+    )
+    
+    shiftLockSettings.lastCameraPosition = targetCFrame.Position
+    shiftLockSettings.lastCameraLookAt = shiftLockSettings.fixedReferencePoint
+    
+    smoothCameraTransition(targetCFrame)
+end
+
+local function setCameraMaxZoomDistance(distance)
+    if not shiftLockSettings.originalCameraMaxZoomDistance then
+        shiftLockSettings.originalCameraMaxZoomDistance = LocalPlayer.CameraMaxZoomDistance
+    end
+    
+    LocalPlayer.CameraMaxZoomDistance = distance
+end
+
+local function restoreOriginalCameraSettings()
+    if shiftLockSettings.originalCameraMaxZoomDistance then
+        LocalPlayer.CameraMaxZoomDistance = shiftLockSettings.originalCameraMaxZoomDistance
+    end
+    
+    Camera.CameraType = Enum.CameraType.Custom
+end
+
+local function enableSilentAim()
+    if silentAimHook then return end
+    
+    silentAimConnection = task.spawn(function()
+        while task.wait(silentAimSettings.updateRate) do 
+            if not silentAimSettings.enabled then break end
+            silentAimSettings.currentTarget = getClosestSilentAimTarget()
+        end
+    end)
+    
+    local original
+    original = hookmetamethod(game, "__namecall", function(self, ...)
+        local args = {...}
+        if not checkcaller() and silentAimSettings.enabled and silentAimSettings.currentTarget and tostring(self) == "Workspace" and getnamecallmethod() == "Raycast" then
+            local origin = args[1]
+            local newDir = (silentAimSettings.currentTarget.Position - origin).Unit * 1000
+            return original(self, origin, newDir, args[3])
+        end
+        return original(self, ...)
+    end)
+    
+    silentAimHook = original
+    showMessage("Silent Aim Enabled", 2)
+end
+
+local function disableSilentAim()
+    if silentAimConnection then
+        task.cancel(silentAimConnection)
+        silentAimConnection = nil
+    end
+    
+    silentAimSettings.currentTarget = nil
+    showMessage("Silent Aim Disabled", 2)
+end
+
+local window = DrRayLibrary:Load("Sniper Duels GUI", "Default")
+
+local aimbotTab = DrRayLibrary.newTab("Aimbot", "ImageIdHere")
+local silentAimTab = DrRayLibrary.newTab("Silent Aim", "ImageIdHere")
+local espTab = DrRayLibrary.newTab("ESP", "ImageIdHere")
+local targetsTab = DrRayLibrary.newTab("Targets", "ImageIdHere")
+local teamTab = DrRayLibrary.newTab("Team", "ImageIdHere")
+local settingsTab = DrRayLibrary.newTab("Settings", "ImageIdHere")
+
+aimbotTab.newLabel("Aimbot Settings")
+
+aimbotTab.newToggle("Aimbot Enabled", "Enable aimbot", false, function(state)
+    aimbotSettings.enabled = state
+    
+    if state then
+        local fovGui = createFOVCircle()
+        crosshairObj = createCrosshair()
+        
+        aimbotConnection = RunService.RenderStepped:Connect(function()
+            if not aimbotSettings.enabled then return end
+            
+            local target = getClosestTarget()
+            if target then
+                if aimbotSettings.aimFlexibility and aimbotSettings.isAimingAtTarget then
+                    return
+                end
+                
+                local targetPosition = getTargetPositionWithPrediction(target)
+                if targetPosition then
+                    if aimbotSettings.legitMode then
+                        local delay = math.random(aimbotSettings.minDelay, aimbotSettings.maxDelay) / 1000
+                        getCurrentWait()(delay)
+                        
+                        local targetCFrame = CFrame.new(Camera.CFrame.Position, targetPosition)
+                        
+                        if aimbotSettings.useLerpMethod then
+                            local smoothness = aimbotSettings.fasterAimbot and 0.8 or aimbotSettings.smoothing
+                            Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, smoothness)
+                        else
+                            local smoothness = aimbotSettings.fasterAimbot and 0.8 or aimbotSettings.smoothing
+                            local tweenInfo = TweenInfo.new(smoothness, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+                            local tween = TweenService:Create(Camera, tweenInfo, {CFrame = targetCFrame})
+                            tween:Play()
+                        end
+                    else
+                        Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetPosition)
+                    end
+                    
+                    if shiftLockSettings.restrictCameraMovements then
+                        updateCharacterOrientation()
+                    end
+                end
+            end
+            
+            updateCrosshair(crosshairObj)
+            updateFOVCircle()
+        end)
+        
+        if aimbotSettings.autoShoot then
+            autoShootConnection = RunService.Heartbeat:Connect(function()
+                if not aimbotSettings.enabled or not aimbotSettings.autoShoot then return end
+                
+                local target = aimbotSettings.currentTarget
+                if target and isCrosshairOnTarget(target) then
+                    simulateButtonPress(aimbotSettings.shootButton)
+                end
+            end)
+        end
+    else
+        if aimbotConnection then
+            aimbotConnection:Disconnect()
+            aimbotConnection = nil
+        end
+        
+        if autoShootConnection then
+            autoShootConnection:Disconnect()
+            autoShootConnection = nil
+        end
+        
+        if fovCircle and fovCircle.Parent then
+            fovCircle.Parent:Destroy()
+            fovCircle = nil
+        end
+        
+        if crosshairObj and crosshairObj.gui then
+            crosshairObj.gui:Destroy()
+            crosshairObj = nil
+        end
+        
+        aimbotSettings.currentTarget = nil
+        aimbotSettings.isAimingAtTarget = false
+    end
+end)
+
+aimbotTab.newToggle("Smart Mode", "Target best visible body part", false, function(state)
+    aimbotSettings.smartMode = state
+end)
+
+aimbotTab.newToggle("Legit Aimbot", "Human-like aiming", false, function(state)
+    aimbotSettings.legitMode = state
+end)
+
+aimbotTab.newToggle("Aim Flexibility", "Keep target when aiming", false, function(state)
+    aimbotSettings.aimFlexibility = state
+end)
+
+aimbotTab.newToggle("Persistent Aim", "Maintain target lock", false, function(state)
+    aimbotSettings.persistentAim = state
+end)
+
+aimbotTab.newToggle("Target External Targets", "Include external targets", true, function(state)
+    aimbotSettings.targetExternalTargets = state
+end)
+
+aimbotTab.newToggle("No Aimbot Players", "Exclude players from aimbot", false, function(state)
+    aimbotSettings.noAimbotPlayers = state
+end)
+
+aimbotTab.newToggle("Ignore Walls", "Aim through walls", false, function(state)
+    aimbotSettings.ignoreWalls = state
+end)
+
+aimbotTab.newToggle("360 FOV", "Target anywhere on screen", false, function(state)
+    aimbotSettings.fov360 = state
+    updateFOVCircle()
+end)
+
+aimbotTab.newToggle("360 True Mode", "Target anywhere including off-screen", false, function(state)
+    aimbotSettings.fov360True = state
+    updateFOVCircle()
+end)
+
+aimbotTab.newToggle("Show Crosshair", "Display custom crosshair", true, function(state)
+    aimbotSettings.showCrosshair = state
+    if crosshairObj and crosshairObj.frame then
+        crosshairObj.frame.Visible = state
+    end
+end)
+
+aimbotTab.newToggle("Show FOV Circle", "Display FOV indicator", true, function(state)
+    aimbotSettings.showFOVCircle = state
+    if fovCircle then
+        fovCircle.Visible = state and aimbotSettings.enabled and not (aimbotSettings.fov360 or aimbotSettings.fov360True)
+    end
+end)
+
+aimbotTab.newToggle("Predict Movement", "Lead moving targets", false, function(state)
+    aimbotSettings.predictMovement = state
+end)
+
+aimbotTab.newToggle("Auto Shoot", "Auto shoot when on target", false, function(state)
+    aimbotSettings.autoShoot = state
+    
+    if state and aimbotSettings.enabled then
+        if autoShootConnection then
+            autoShootConnection:Disconnect()
+        end
+        
+        autoShootConnection = RunService.Heartbeat:Connect(function()
+            if not aimbotSettings.enabled or not aimbotSettings.autoShoot then return end
+            
+            local target = aimbotSettings.currentTarget
+            if target and isCrosshairOnTarget(target) then
+                simulateButtonPress(aimbotSettings.shootButton)
+            end
+        end)
+    else
+        if autoShootConnection then
+            autoShootConnection:Disconnect()
+            autoShootConnection = nil
+        end
+    end
+end)
+
+aimbotTab.newLabel("Aimbot Configuration")
+
+aimbotTab.newSlider("FOV Radius", "Adjust FOV size", 500, 10, 125, function(value)
+    aimbotSettings.fovRadius = value
+    updateFOVCircle()
+end)
+
+aimbotTab.newSlider("Aimbot Smoothing", "Adjust smoothness (0.01-1.0)", 100, 1, 20, function(value)
+    aimbotSettings.smoothing = value / 100
+end)
+
+aimbotTab.newSlider("Lock Distance", "Max targeting distance", 5000, 0, 1000, function(value)
+    aimbotSettings.lockDistance = value
+end)
+
+aimbotTab.newLabel("Teleport to Target")
+
+aimbotTab.newToggle("Enable Teleport", "Enable teleportation", false, function(state)
+    teleportSettings.enabled = state
+end)
+
+aimbotTab.newDropdown("Teleport Mode", "Click Mode", {"Click Mode", "Crosshair Mode"}, function(selected)
+    if selected == "Click Mode" then
+        teleportSettings.mode = "click"
+        showMessage("Teleport Mode: Click to cycle", 3)
+    else
+        teleportSettings.mode = "crosshair"
+        showMessage("Teleport Mode: Crosshair (360°, no walls)", 3)
+    end
+end)
+
+aimbotTab.newButton("Teleport to Target", "Teleport now", function()
+    if not teleportSettings.enabled then
+        showMessage("Enable teleport first!", 2)
+        return
+    end
+    
+    if teleportSettings.mode == "click" then
+        teleportToNextTarget()
+    else
+        teleportToCrosshairTarget()
+    end
+end)
+
+aimbotTab.newToggle("Auto Rotate", "Face target after teleport", true, function(state)
+    teleportSettings.autoRotate = state
+end)
+
+aimbotTab.newToggle("Safety Check", "Check ground before teleport", true, function(state)
+    teleportSettings.safetyCheck = state
+end)
+
+aimbotTab.newSlider("Teleport Cooldown", "Cooldown (seconds)", 50, 1, 5, function(value)
+    teleportSettings.cooldown = value / 10
+end)
+
+aimbotTab.newSlider("Detection Radius", "Crosshair detection radius", 100, 10, 50, function(value)
+    teleportSettings.detectionRadius = value
+end)
+
+silentAimTab.newLabel("Silent Aim Settings")
+
+silentAimTab.newToggle("Silent Aim Enabled", "Enable silent aim", false, function(state)
+    silentAimSettings.enabled = state
+    
+    if state then
+        enableSilentAim()
+    else
+        disableSilentAim()
+    end
+end)
+
+silentAimTab.newToggle("Wall Check", "Check walls for silent aim", true, function(state)
+    silentAimSettings.wallCheck = state
+end)
+
+silentAimTab.newToggle("Team Check", "Ignore teammates", true, function(state)
+    silentAimSettings.teamCheck = state
+end)
+
+silentAimTab.newToggle("Dead Check", "Ignore dead players", true, function(state)
+    silentAimSettings.deadCheck = state
+end)
+
+silentAimTab.newToggle("Whitelist Check", "Ignore whitelisted players", true, function(state)
+    silentAimSettings.whitelistCheck = state
+end)
+
+silentAimTab.newToggle("Target External Targets", "Include external targets", true, function(state)
+    silentAimSettings.targetExternalTargets = state
+end)
+
+silentAimTab.newLabel("Silent Aim Configuration")
+
+silentAimTab.newSlider("Silent Aim FOV", "Adjust FOV size", 300, 10, 120, function(value)
+    silentAimSettings.fov = value
+end)
+
+silentAimTab.newDropdown("Target Mode", "Crosshair", {"Crosshair", "Nearest"}, function(selected)
+    silentAimSettings.targetMode = selected:lower()
+    showMessage("Silent Aim Mode: " .. selected, 2)
+end)
+
+espTab.newLabel("ESP Settings")
+
+espTab.newToggle("ESP Enabled", "Enable ESP highlighting", false, function(state)
+    espEnabled = state
+    if state then
+        updateESP()
+    else
+        clearHighlights()
+        clearNameLabels()
+        clearHealthLabels()
+        clearDistanceLabels()
+    end
+end)
+
+espTab.newToggle("ESP Players", "Enable ESP for players", false, function(state)
+    playerEspEnabled = state
+    if state then
+        updateESP()
+    else
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                pcall(function()
+                    if highlights[player.Character] then
+                        highlights[player.Character]:Destroy()
+                        highlights[player.Character] = nil
+                    end
+                    
+                    if nameLabels[player.Character] then
+                        nameLabels[player.Character]:Destroy()
+                        nameLabels[player.Character] = nil
+                    end
+                    
+                    if healthLabels[player.Character] and healthLabels[player.Character].gui then
+                        healthLabels[player.Character].gui:Destroy()
+                        healthLabels[player.Character] = nil
+                    end
+                    
+                    if distanceLabels[player.Character] and distanceLabels[player.Character].gui then
+                        distanceLabels[player.Character].gui:Destroy()
+                        distanceLabels[player.Character] = nil
+                    end
+                end)
+            end
+        end
+    end
+end)
+
+espTab.newToggle("No ESP Players", "Disable ESP for all players", false, function(state)
+    noEspPlayers = state
+    updateESP()
+end)
+
+espTab.newLabel("ESP Display Options")
+
+espTab.newToggle("Show Names", "Display player names", false, function(state)
+    espSettings.showNames = state
+    clearNameLabels()
+    if state and espEnabled then
+        updateESP()
+    end
+end)
+
+espTab.newToggle("Show Health", "Display health bars", false, function(state)
+    espSettings.showHealth = state
+    clearHealthLabels()
+    if state and espEnabled then
+        updateESP()
+    end
+end)
+
+espTab.newToggle("Show Distance", "Display distance", false, function(state)
+    espSettings.showDistance = state
+    clearDistanceLabels()
+    if state and espEnabled then
+        updateESP()
+    end
+end)
+
+espTab.newToggle("Team Colored Text", "Color text by team", true, function(state)
+    espSettings.teamColoredText = state
+    if espEnabled then
+        updateESP()
+    end
+end)
+
+espTab.newToggle("Team ESP Green", "Force green for teammates", true, function(state)
+    espSettings.forceTeamColor = state
+    if espEnabled and teamSettings.teamCheckEnabled then
+        updateESP()
+    end
+end)
+
+espTab.newToggle("Enemy ESP Red", "Force red for enemies", true, function(state)
+    espSettings.forceEnemyColor = state
+    if espEnabled and teamSettings.teamCheckEnabled then
+        updateESP()
+    end
+end)
+
+espTab.newLabel("ESP Transparency")
+
+espTab.newSlider("ESP Transparency", "Adjust transparency", 100, 0, 50, function(value)
+    local transparency = value / 100
+    espSettings.enemyTransparency = transparency
+    espSettings.playerTransparency = transparency
+    
+    for target, highlight in pairs(highlights) do
+        pcall(function()
+            if highlight and highlight.Parent then
+                local player = nil
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p.Character == target then
+                        player = p
+                        break
+                    end
+                end
+                
+                if player then
+                    local isTeammate = isOnSameTeam(player)
+                    highlight.FillTransparency = isTeammate and espSettings.playerTransparency or espSettings.enemyTransparency
+                else
+                    highlight.FillTransparency = espSettings.enemyTransparency
+                end
+            end
+        end)
+    end
+end)
+
+targetsTab.newLabel("External Targets Management")
+
+targetsTab.newInput("Target Name/Path", "Enter target name", function(text)
+    textBoxValues.targetName = text
+end)
+
+targetsTab.newButton("Add External Target", "Add target by name/path", function()
+    if textBoxValues.targetName ~= "" then
+        local success, message = addExternalTarget(textBoxValues.targetName)
+        if success then
+            showMessage("Added: " .. message, 3)
+        else
+            showMessage("Failed: " .. message, 3)
+        end
+    else
+        showMessage("Enter a target name", 2)
+    end
+end)
+
+targetsTab.newButton("Add All Children", "Add all children of parent", function()
+    if textBoxValues.targetName ~= "" then
+        local success, message = addAllChildrenAsTargets(textBoxValues.targetName)
+        if success then
+            showMessage(message, 3)
+        else
+            showMessage("Failed: " .. message, 3)
+        end
+    else
+        showMessage("Enter a parent path", 2)
+    end
+end)
+
+targetsTab.newButton("Remove All Targets", "Clear all external targets", function()
+    local success, message = removeAllExternalTargets()
+    if success then
+        showMessage(message, 2)
+    end
+end)
+
+targetsTab.newToggle("Auto Re-add Targets", "Auto re-add removed targets", false, function(state)
+    autoReaddTargets = state
+    
+    if state then
+        if readdTargetsConnection then
+            readdTargetsConnection:Disconnect()
+        end
+        
+        readdTargetsConnection = RunService.Heartbeat:Connect(function()
+            getCurrentWait()(readdDelay)
+            checkAndReaddTargets()
+        end)
+    else
+        if readdTargetsConnection then
+            readdTargetsConnection:Disconnect()
+            readdTargetsConnection = nil
+        end
+    end
+end)
+
+targetsTab.newLabel("Auto Target System")
+
+targetsTab.newInput("Auto Target Name", "Enter target name", function(text)
+    textBoxValues.autoTargetName = text
+end)
+
+targetsTab.newButton("Add To Auto Target", "Add to auto target list", function()
+    if textBoxValues.autoTargetName ~= "" then
+        local success, message = addAutoTarget(textBoxValues.autoTargetName)
+        if success then
+            showMessage(message, 2)
+        else
+            showMessage("Failed: " .. message, 2)
+        end
+    else
+        showMessage("Enter a target name", 2)
+    end
+end)
+
+targetsTab.newButton("Remove From Auto Target", "Remove from list", function()
+    if textBoxValues.autoTargetName ~= "" then
+        local success, message = removeAutoTarget(textBoxValues.autoTargetName)
+        if success then
+            showMessage(message, 2)
+        else
+            showMessage("Failed: " .. message, 2)
+        end
+    else
+        showMessage("Enter a target name", 2)
+    end
+end)
+
+targetsTab.newButton("Clear Auto Targets", "Remove all auto targets", function()
+    local success, message = clearAutoTargets()
+    if success then
+        showMessage(message, 2)
+    end
+end)
+
+targetsTab.newToggle("Enable Auto Target", "Auto add targets", false, function(state)
+    autoTargetSystem.enabled = state
+    
+    if state then
+        if autoTargetConnection then
+            autoTargetConnection:Disconnect()
+        end
+        
+        autoTargetConnection = RunService.Heartbeat:Connect(function()
+            processAutoTargets()
+        end)
+    else
+        if autoTargetConnection then
+            autoTargetConnection:Disconnect()
+            autoTargetConnection = nil
+        end
+    end
+end)
+
+teamTab.newLabel("Team Settings")
+
+teamTab.newToggle("Team Check", "Enable team detection", false, function(state)
+    teamSettings.teamCheckEnabled = state
+    
+    if state then
+        updateLocalPlayerTeam()
+        
+        if teamUpdateConnection then
+            teamUpdateConnection:Disconnect()
+        end
+        
+        teamUpdateConnection = RunService.Heartbeat:Connect(function()
+            getCurrentWait()(1)
+            updateLocalPlayerTeam()
+        end)
+    else
+        if teamUpdateConnection then
+            teamUpdateConnection:Disconnect()
+            teamUpdateConnection = nil
+        end
+    end
+    
+    updateESP()
+end)
+
+teamTab.newToggle("Target Enemies Only", "Only target enemies", true, function(state)
+    teamSettings.targetEnemiesOnly = state
+    
+    if not teamSettings.teamCheckEnabled then
+        showMessage("Enable Team Check first", 2)
+    end
+end)
+
+teamTab.newToggle("ESP Teammates", "Show ESP for teammates", false, function(state)
+    teamSettings.espTeammates = state
+    
+    if not teamSettings.teamCheckEnabled then
+        showMessage("Enable Team Check first", 2)
+    else
+        updateESP()
+    end
+end)
+
+teamTab.newToggle("ESP Enemies", "Show ESP for enemies", true, function(state)
+    teamSettings.espEnemies = state
+    
+    if not teamSettings.teamCheckEnabled then
+        showMessage("Enable Team Check first", 2)
+    else
+        updateESP()
+    end
+end)
+
+teamTab.newLabel("Team Whitelist")
+
+teamTab.newInput("Team Name", "Enter team name", function(text)
+    textBoxValues.teamName = text
+end)
+
+teamTab.newButton("Add Team to Whitelist", "Add team", function()
+    if textBoxValues.teamName ~= "" then
+        local success, message = addTeamToWhitelist(textBoxValues.teamName)
+        if success then
+            showMessage(message, 2)
+        else
+            showMessage("Failed: " .. message, 2)
+        end
+    else
+        showMessage("Enter a team name", 2)
+    end
+end)
+
+teamTab.newButton("Remove Team from Whitelist", "Remove team", function()
+    if textBoxValues.teamName ~= "" then
+        local success, message = removeTeamFromWhitelist(textBoxValues.teamName)
+        if success then
+            showMessage(message, 2)
+        else
+            showMessage("Failed: " .. message, 2)
+        end
+    else
+        showMessage("Enter a team name", 2)
+    end
+end)
+
+teamTab.newButton("Clear Team Whitelist", "Clear all teams", function()
+    local success, message = clearTeamWhitelist()
+    if success then
+        showMessage(message, 2)
+    end
+end)
+
+teamTab.newLabel("Player Whitelist")
+
+teamTab.newInput("Player Name", "Enter player name", function(text)
+    textBoxValues.playerName = text
+end)
+
+teamTab.newButton("Add Player to Whitelist", "Add player", function()
+    if textBoxValues.playerName ~= "" then
+        local success, message = addPlayerToWhitelist(textBoxValues.playerName)
+        if success then
+            showMessage(message, 2)
+        else
+            showMessage("Failed: " .. message, 2)
+        end
+    else
+        showMessage("Enter a player name", 2)
+    end
+end)
+
+teamTab.newButton("Remove Player from Whitelist", "Remove player", function()
+    if textBoxValues.playerName ~= "" then
+        local success, message = removePlayerFromWhitelist(textBoxValues.playerName)
+        if success then
+            showMessage(message, 2)
+        else
+            showMessage("Failed: " .. message, 2)
+        end
+    else
+        showMessage("Enter a player name", 2)
+    end
+end)
+
+teamTab.newButton("Clear Player Whitelist", "Clear all players", function()
+    local success, message = clearPlayerWhitelist()
+    if success then
+        showMessage(message, 2)
+    end
+end)
+
+settingsTab.newLabel("Camera Controls")
+
+settingsTab.newToggle("Forced ShiftLock", "Enable custom shift lock", false, function(state)
+    shiftLockSettings.enabled = state
+    
+    if state then
+        if not shiftLockSettings.originalCameraMaxZoomDistance then
+            shiftLockSettings.originalCameraMaxZoomDistance = LocalPlayer.CameraMaxZoomDistance
+        end
+        
+        setCameraMaxZoomDistance(9999)
+        
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            shiftLockSettings.referenceDirection = LocalPlayer.Character.HumanoidRootPart.CFrame.LookVector
+        else
+            shiftLockSettings.referenceDirection = Vector3.new(0, 0, -1)
+        end
+        
+        shiftLockSettings.lastMousePosition = UserInputService:GetMouseLocation()
+        shiftLockSettings.fixedReferencePoint = nil
+        
+        if shiftLockConnection then
+            shiftLockConnection:Disconnect()
+        end
+        
+        shiftLockConnection = RunService.RenderStepped:Connect(updateCustomShiftLock)
+    else
+        if shiftLockConnection then
+            shiftLockConnection:Disconnect()
+            shiftLockConnection = nil
+        end
+        
+        restoreOriginalCameraSettings()
+    end
+end)
+
+settingsTab.newSlider("Camera Zoom", "Adjust camera distance", 100, 1, 30, function(value)
+    shiftLockSettings.zoomDistance = value
+end)
+
+settingsTab.newLabel("Script Configuration")
+
+settingsTab.newToggle("Use task.wait()", "Use task.wait instead of wait", false, function(state)
+    useTaskWait = state
+end)
+
+spawn(function()
+    while true do
+        getCurrentWait()(10)
+        if espEnabled then
+            pcall(updateESP)
+        end
+    end
+end)
+
+spawn(function()
+    while true do
+        getCurrentWait()(0.1)
+        if espSettings.showHealth then
+            pcall(updateHealthLabels)
+        end
+    end
+end)
+
+spawn(function()
+    while true do
+        getCurrentWait()(0.1)
+        if espSettings.showDistance then
+            pcall(updateDistanceLabels)
+        end
+    end
+end)
+
+Players.PlayerAdded:Connect(function(player)
+    if playerEspEnabled then
+        player.CharacterAdded:Connect(function()
+            wait(1)
+            pcall(updateESP)
+        end)
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    pcall(function()
+        if player.Character and highlights[player.Character] then
+            highlights[player.Character]:Destroy()
+            highlights[player.Character] = nil
+        end
+        
+        if player.Character and nameLabels[player.Character] then
+            nameLabels[player.Character]:Destroy()
+            nameLabels[player.Character] = nil
+        end
+        
+        if player.Character and healthLabels[player.Character] then
+            healthLabels[player.Character].gui:Destroy()
+            healthLabels[player.Character] = nil
+        end
+        
+        if player.Character and distanceLabels[player.Character] then
+            distanceLabels[player.Character].gui:Destroy()
+            distanceLabels[player.Character] = nil
+        end
+    end)
+end)
+
+LocalPlayer.CharacterAdded:Connect(function(newCharacter)
+    character = newCharacter
+    humanoid = character:WaitForChild("Humanoid")
+    rootPart = character:WaitForChild("HumanoidRootPart")
+    
+    pcall(updateESP)
+end)
+
+showMessage("Sniper Duels GUI Loaded!", 5)
+showMessage("All Features Active - Mobile Optimized", 4)
