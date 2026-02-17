@@ -4396,6 +4396,7 @@ CMDs[#CMDs + 1] = {NAME = 'execscript / scriptrun [query]', DESC = 'Execute a sc
 CMDs[#CMDs + 1] = {NAME = 'scriptslist / scripts', DESC = 'View and execute scripts from list'}
 CMDs[#CMDs + 1] = {NAME = 'dexnoapi / noapidex', DESC = 'skip api check'}
 CMDs[#CMDs + 1] = {NAME = 'rspyv4 / remotespyv4', DESC = 'rspy with adonis bypass'}
+CMDs[#CMDs + 1] = {NAME = 'lightgui / lightcolor', DESC = 'light gui script'}
 CMDs[#CMDs + 1] = {NAME = 'Evade / Evade GUI', DESC = 'Evade script'}
 CMDs[#CMDs + 1] = {NAME = 'Zoweapon remover / weaponremover', DESC = 'Zo weapon remover GUI'}
 CMDs[#CMDs + 1] = {NAME = 'Zocontrolsset / zocontrols', DESC = 'Zo controls setting GUI'}
@@ -24460,6 +24461,1240 @@ addcmd('rspyv4',{'remotespyv4'},function(args, speaker)
 loadstring(game:HttpGet("https://raw.githubusercontent.com/anotheraltacchere/infYld/refs/heads/main/Spy%20v4"))()
 end)
 
+addcmd('lightgui',{'lightcolor'},function(args, speaker)
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+local AUTO_COLOR_INTERVAL = 2
+local RANDOM_COLOR_SPEED = 0.5
+local GUI_SIZE = UDim2.new(0, 420, 0, 420)
+local GUI_START_POS = UDim2.new(0.5, -210, 0, -500)
+local GUI_END_POS = UDim2.new(0.5, -210, 0.5, -210)
+
+local autoColorEnabled = false
+local randomColorEnabled = false
+local autoColorConnection = nil
+local randomColorConnection = nil
+local currentHue = 0
+local colorPickerOpen = false
+local selectedColor = Color3.fromRGB(255, 255, 255)
+local pickerVersion = 1
+local respawnConnection = nil
+local lightEnabled = true
+
+local currentR = 255
+local currentG = 255
+local currentB = 255
+
+local currentHue2 = 0
+local currentSat = 1
+local currentVal = 1
+
+local currentRange = 30
+local currentBrightness = 5
+
+local function randomString()
+    local length = math.random(10, 20)
+    local array = {}
+    for i = 1, length do
+        array[i] = string.char(math.random(32, 126))
+    end
+    return table.concat(array)
+end
+
+local function getPlayerLight()
+    if LocalPlayer.Character then
+        local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if root then
+            return root:FindFirstChildOfClass("PointLight")
+        end
+    end
+    return nil
+end
+
+local function createLightIfNeeded()
+    if LocalPlayer.Character then
+        local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if root then
+            local existingLight = root:FindFirstChildOfClass("PointLight")
+            if not existingLight then
+                local light = Instance.new("PointLight")
+                light.Parent = root
+                light.Range = currentRange
+                light.Brightness = currentBrightness
+                light.Color = selectedColor
+                light.Enabled = lightEnabled
+                return light
+            end
+            return existingLight
+        end
+    end
+    return nil
+end
+
+local function setLightColor(r, g, b)
+    local light = getPlayerLight()
+    if light then
+        light.Color = Color3.fromRGB(r, g, b)
+        return true
+    end
+    return false
+end
+
+local function updateLightProperties()
+    local light = getPlayerLight()
+    if light then
+        light.Range = currentRange
+        light.Brightness = currentBrightness
+        light.Enabled = lightEnabled
+    end
+end
+
+local function HSVtoRGB(h, s, v)
+    local r, g, b
+    local i = math.floor(h * 6)
+    local f = h * 6 - i
+    local p = v * (1 - s)
+    local q = v * (1 - f * s)
+    local t = v * (1 - (1 - f) * s)
+    i = i % 6
+    if i == 0 then r, g, b = v, t, p
+    elseif i == 1 then r, g, b = q, v, p
+    elseif i == 2 then r, g, b = p, v, t
+    elseif i == 3 then r, g, b = p, q, v
+    elseif i == 4 then r, g, b = t, p, v
+    elseif i == 5 then r, g, b = v, p, q
+    end
+    return math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5)
+end
+
+local function RGBtoHSV(r, g, b)
+    r, g, b = r / 255, g / 255, b / 255
+    local max = math.max(r, g, b)
+    local min = math.min(r, g, b)
+    local delta = max - min
+    
+    local h, s, v = 0, 0, max
+    
+    if delta > 0 then
+        if max == r then
+            h = ((g - b) / delta) % 6
+        elseif max == g then
+            h = (b - r) / delta + 2
+        else
+            h = (r - g) / delta + 4
+        end
+        h = h / 6
+        s = delta / max
+    end
+    
+    return h, s, v
+end
+
+local function RGBtoHex(r, g, b)
+    return string.format("#%02X%02X%02X", r, g, b)
+end
+
+local function HexToRGB(hex)
+    hex = hex:gsub("#", "")
+    if #hex == 6 then
+        local r = tonumber(hex:sub(1, 2), 16)
+        local g = tonumber(hex:sub(3, 4), 16)
+        local b = tonumber(hex:sub(5, 6), 16)
+        if r and g and b then
+            return r, g, b
+        end
+    end
+    return nil
+end
+
+local function dragGUI(gui, mainFrame)
+    local dragging
+    local dragInput
+    local dragStart
+    local startPos
+    
+    local function update(input)
+        local delta = input.Position - dragStart
+        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+    
+    gui.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = mainFrame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    gui.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            update(input)
+        end
+    end)
+end
+
+local function stopAutoColor()
+    if autoColorConnection then
+        autoColorConnection:Disconnect()
+        autoColorConnection = nil
+    end
+    autoColorEnabled = false
+end
+
+local function stopRandomColor()
+    if randomColorConnection then
+        randomColorConnection:Disconnect()
+        randomColorConnection = nil
+    end
+    randomColorEnabled = false
+end
+
+local function startAutoColor()
+    stopAutoColor()
+    autoColorEnabled = true
+    
+    autoColorConnection = RunService.Heartbeat:Connect(function()
+        if not autoColorEnabled then
+            stopAutoColor()
+            return
+        end
+        
+        task.wait(AUTO_COLOR_INTERVAL)
+        
+        local light = getPlayerLight()
+        if not light then
+            light = createLightIfNeeded()
+        end
+        
+        if light then
+            light.Color = selectedColor
+        end
+    end)
+end
+
+local function startRandomColor()
+    stopRandomColor()
+    randomColorEnabled = true
+    
+    randomColorConnection = RunService.Heartbeat:Connect(function(deltaTime)
+        if not randomColorEnabled then
+            stopRandomColor()
+            return
+        end
+        
+        currentHue = (currentHue + (deltaTime * RANDOM_COLOR_SPEED)) % 1
+        local r, g, b = HSVtoRGB(currentHue, 1, 1)
+        selectedColor = Color3.fromRGB(r, g, b)
+        
+        local light = getPlayerLight()
+        if not light then
+            light = createLightIfNeeded()
+        end
+        
+        if light then
+            light.Color = selectedColor
+        end
+    end)
+end
+
+local function setupRespawnHandler()
+    if respawnConnection then
+        respawnConnection:Disconnect()
+    end
+    
+    respawnConnection = LocalPlayer.CharacterAdded:Connect(function(character)
+        task.wait(0.5)
+        
+        if autoColorEnabled or randomColorEnabled then
+            local light = createLightIfNeeded()
+            if light and not randomColorEnabled then
+                light.Color = selectedColor
+            end
+        end
+    end)
+end
+
+local presetColors = {
+    {name = "Red", r = 255, g = 0, b = 0},
+    {name = "Orange", r = 255, g = 165, b = 0},
+    {name = "Yellow", r = 255, g = 255, b = 0},
+    {name = "Green", r = 0, g = 255, b = 0},
+    {name = "Cyan", r = 0, g = 255, b = 255},
+    {name = "Blue", r = 0, g = 0, b = 255},
+    {name = "Purple", r = 128, g = 0, b = 255},
+    {name = "Pink", r = 255, g = 0, b = 255},
+    {name = "White", r = 255, g = 255, b = 255},
+    {name = "Warm", r = 255, g = 200, b = 150}
+}
+
+local function createColorPickerGUI()
+    if colorPickerOpen then return end
+    colorPickerOpen = true
+    
+    local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+    
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = randomString()
+    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.IgnoreGuiInset = true
+    ScreenGui.Parent = PlayerGui
+    
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Name = "MainFrame"
+    mainFrame.BackgroundColor3 = Color3.fromRGB(36, 36, 37)
+    mainFrame.BackgroundTransparency = 0.5
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Position = GUI_START_POS
+    mainFrame.Size = GUI_SIZE
+    mainFrame.ZIndex = 10
+    mainFrame.Active = true
+    mainFrame.Parent = ScreenGui
+    
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0, 6)
+    uiCorner.Parent = mainFrame
+    
+    local topBar = Instance.new("Frame")
+    topBar.Name = "TopBar"
+    topBar.BackgroundColor3 = Color3.fromRGB(46, 46, 47)
+    topBar.BorderSizePixel = 0
+    topBar.Size = UDim2.new(1, 0, 0, 28)
+    topBar.ZIndex = 11
+    topBar.Parent = mainFrame
+    
+    local topCorner = Instance.new("UICorner")
+    topCorner.CornerRadius = UDim.new(0, 6)
+    topCorner.Parent = topBar
+    
+    local topBarCover = Instance.new("Frame")
+    topBarCover.BackgroundColor3 = Color3.fromRGB(46, 46, 47)
+    topBarCover.BorderSizePixel = 0
+    topBarCover.Position = UDim2.new(0, 0, 0.5, 0)
+    topBarCover.Size = UDim2.new(1, 0, 0.5, 0)
+    topBarCover.ZIndex = 11
+    topBarCover.Parent = topBar
+    
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.BackgroundTransparency = 1
+    title.Position = UDim2.new(0, 10, 0, 0)
+    title.Size = UDim2.new(1, -40, 1, 0)
+    title.Font = Enum.Font.SourceSansBold
+    title.Text = "Light Color Picker"
+    title.TextColor3 = Color3.new(1, 1, 1)
+    title.TextSize = 15
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.ZIndex = 12
+    title.Parent = topBar
+    
+    local closeButton = Instance.new("TextButton")
+    closeButton.Name = "Close"
+    closeButton.BackgroundTransparency = 1
+    closeButton.Position = UDim2.new(1, -28, 0, 0)
+    closeButton.Size = UDim2.new(0, 28, 0, 28)
+    closeButton.Text = ""
+    closeButton.ZIndex = 12
+    closeButton.Parent = topBar
+    
+    local closeIcon = Instance.new("ImageLabel")
+    closeIcon.BackgroundTransparency = 1
+    closeIcon.Position = UDim2.new(0, 7, 0, 7)
+    closeIcon.Size = UDim2.new(0, 14, 0, 14)
+    closeIcon.Image = "rbxassetid://5054663650"
+    closeIcon.ZIndex = 12
+    closeIcon.Parent = closeButton
+    
+    local contentFrame = Instance.new("Frame")
+    contentFrame.Name = "Content"
+    contentFrame.BackgroundTransparency = 1
+    contentFrame.Position = UDim2.new(0, 0, 0, 28)
+    contentFrame.Size = UDim2.new(1, 0, 1, -28)
+    contentFrame.ZIndex = 11
+    contentFrame.Parent = mainFrame
+    
+    local versionLabel = Instance.new("TextLabel")
+    versionLabel.BackgroundTransparency = 1
+    versionLabel.Position = UDim2.new(0, 10, 0, 8)
+    versionLabel.Size = UDim2.new(0, 100, 0, 16)
+    versionLabel.Font = Enum.Font.SourceSansBold
+    versionLabel.Text = "Picker Version:"
+    versionLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    versionLabel.TextSize = 13
+    versionLabel.TextXAlignment = Enum.TextXAlignment.Left
+    versionLabel.ZIndex = 12
+    versionLabel.Parent = contentFrame
+    
+    local versionDropdown = Instance.new("TextButton")
+    versionDropdown.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    versionDropdown.BorderSizePixel = 0
+    versionDropdown.Position = UDim2.new(0, 110, 0, 8)
+    versionDropdown.Size = UDim2.new(0, 60, 0, 20)
+    versionDropdown.Font = Enum.Font.SourceSans
+    versionDropdown.Text = "V" .. pickerVersion
+    versionDropdown.TextColor3 = Color3.new(1, 1, 1)
+    versionDropdown.TextSize = 13
+    versionDropdown.ZIndex = 12
+    versionDropdown.Parent = contentFrame
+    
+    local dropCorner = Instance.new("UICorner")
+    dropCorner.CornerRadius = UDim.new(0, 4)
+    dropCorner.Parent = versionDropdown
+    
+    local lightEnabledLabel = Instance.new("TextLabel")
+    lightEnabledLabel.BackgroundTransparency = 1
+    lightEnabledLabel.Position = UDim2.new(0, 180, 0, 8)
+    lightEnabledLabel.Size = UDim2.new(0, 80, 0, 20)
+    lightEnabledLabel.Font = Enum.Font.SourceSansBold
+    lightEnabledLabel.Text = "Light:"
+    lightEnabledLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    lightEnabledLabel.TextSize = 13
+    lightEnabledLabel.TextXAlignment = Enum.TextXAlignment.Left
+    lightEnabledLabel.ZIndex = 12
+    lightEnabledLabel.Parent = contentFrame
+    
+    local lightEnabledToggle = Instance.new("TextButton")
+    lightEnabledToggle.BackgroundColor3 = Color3.fromRGB(20, 60, 20)
+    lightEnabledToggle.BackgroundTransparency = 0.3
+    lightEnabledToggle.BorderColor3 = Color3.fromRGB(255, 255, 255)
+    lightEnabledToggle.BorderSizePixel = 1
+    lightEnabledToggle.Position = UDim2.new(0, 225, 0, 8)
+    lightEnabledToggle.Size = UDim2.new(0, 50, 0, 20)
+    lightEnabledToggle.Font = Enum.Font.SourceSansBold
+    lightEnabledToggle.Text = "ON"
+    lightEnabledToggle.TextColor3 = Color3.fromRGB(100, 255, 100)
+    lightEnabledToggle.TextSize = 12
+    lightEnabledToggle.ZIndex = 12
+    lightEnabledToggle.Parent = contentFrame
+    
+    local lightToggleCorner = Instance.new("UICorner")
+    lightToggleCorner.CornerRadius = UDim.new(0, 4)
+    lightToggleCorner.Parent = lightEnabledToggle
+    
+    local rangeLabel = Instance.new("TextLabel")
+    rangeLabel.BackgroundTransparency = 1
+    rangeLabel.Position = UDim2.new(0, 285, 0, 8)
+    rangeLabel.Size = UDim2.new(0, 50, 0, 20)
+    rangeLabel.Font = Enum.Font.SourceSansBold
+    rangeLabel.Text = "Range:"
+    rangeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    rangeLabel.TextSize = 12
+    rangeLabel.TextXAlignment = Enum.TextXAlignment.Left
+    rangeLabel.ZIndex = 12
+    rangeLabel.Parent = contentFrame
+    
+    local rangeBox = Instance.new("TextBox")
+    rangeBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    rangeBox.BorderSizePixel = 0
+    rangeBox.Position = UDim2.new(0, 335, 0, 8)
+    rangeBox.Size = UDim2.new(0, 35, 0, 20)
+    rangeBox.Font = Enum.Font.SourceSans
+    rangeBox.Text = "30"
+    rangeBox.TextColor3 = Color3.new(1, 1, 1)
+    rangeBox.TextSize = 12
+    rangeBox.ZIndex = 12
+    rangeBox.Parent = contentFrame
+    
+    local rangeCorner = Instance.new("UICorner")
+    rangeCorner.CornerRadius = UDim.new(0, 4)
+    rangeCorner.Parent = rangeBox
+    
+    local brightnessLabel = Instance.new("TextLabel")
+    brightnessLabel.BackgroundTransparency = 1
+    brightnessLabel.Position = UDim2.new(0, 285, 0, 32)
+    brightnessLabel.Size = UDim2.new(0, 50, 0, 20)
+    brightnessLabel.Font = Enum.Font.SourceSansBold
+    brightnessLabel.Text = "Bright:"
+    brightnessLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    brightnessLabel.TextSize = 12
+    brightnessLabel.TextXAlignment = Enum.TextXAlignment.Left
+    brightnessLabel.ZIndex = 12
+    brightnessLabel.Parent = contentFrame
+    
+    local brightnessBox = Instance.new("TextBox")
+    brightnessBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    brightnessBox.BorderSizePixel = 0
+    brightnessBox.Position = UDim2.new(0, 335, 0, 32)
+    brightnessBox.Size = UDim2.new(0, 35, 0, 20)
+    brightnessBox.Font = Enum.Font.SourceSans
+    brightnessBox.Text = "5"
+    brightnessBox.TextColor3 = Color3.new(1, 1, 1)
+    brightnessBox.TextSize = 12
+    brightnessBox.ZIndex = 12
+    brightnessBox.Parent = contentFrame
+    
+    local brightnessCorner = Instance.new("UICorner")
+    brightnessCorner.CornerRadius = UDim.new(0, 4)
+    brightnessCorner.Parent = brightnessBox
+    
+    lightEnabledToggle.MouseButton1Click:Connect(function()
+        lightEnabled = not lightEnabled
+        if lightEnabled then
+            lightEnabledToggle.Text = "ON"
+            lightEnabledToggle.TextColor3 = Color3.fromRGB(100, 255, 100)
+            lightEnabledToggle.BackgroundColor3 = Color3.fromRGB(20, 60, 20)
+        else
+            lightEnabledToggle.Text = "OFF"
+            lightEnabledToggle.TextColor3 = Color3.fromRGB(255, 100, 100)
+            lightEnabledToggle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        end
+        updateLightProperties()
+    end)
+    
+    rangeBox.FocusLost:Connect(function()
+        local value = tonumber(rangeBox.Text)
+        if value and value >= 0 and value <= 60 then
+            currentRange = value
+            updateLightProperties()
+        else
+            rangeBox.Text = tostring(currentRange)
+        end
+    end)
+    
+    brightnessBox.FocusLost:Connect(function()
+        local value = tonumber(brightnessBox.Text)
+        if value and value >= 0 and value <= 10 then
+            currentBrightness = value
+            updateLightProperties()
+        else
+            brightnessBox.Text = tostring(currentBrightness)
+        end
+    end)
+    
+    local v1Container = Instance.new("Frame")
+    v1Container.Name = "V1Container"
+    v1Container.BackgroundTransparency = 1
+    v1Container.Position = UDim2.new(0, 10, 0, 60)
+    v1Container.Size = UDim2.new(1, -20, 1, -104)
+    v1Container.Visible = true
+    v1Container.ZIndex = 11
+    v1Container.Parent = contentFrame
+    
+    local v2Container = Instance.new("Frame")
+    v2Container.Name = "V2Container"
+    v2Container.BackgroundTransparency = 1
+    v2Container.Position = UDim2.new(0, 10, 0, 60)
+    v2Container.Size = UDim2.new(1, -20, 1, -104)
+    v2Container.Visible = false
+    v2Container.ZIndex = 11
+    v2Container.Parent = contentFrame
+    
+    local presetsLabel = Instance.new("TextLabel")
+    presetsLabel.BackgroundTransparency = 1
+    presetsLabel.Position = UDim2.new(0, 0, 0, 0)
+    presetsLabel.Size = UDim2.new(1, 0, 0, 16)
+    presetsLabel.Font = Enum.Font.SourceSansBold
+    presetsLabel.Text = "Preset Colors"
+    presetsLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    presetsLabel.TextSize = 13
+    presetsLabel.TextXAlignment = Enum.TextXAlignment.Left
+    presetsLabel.ZIndex = 12
+    presetsLabel.Parent = v1Container
+    
+    local presetsContainer = Instance.new("Frame")
+    presetsContainer.BackgroundTransparency = 1
+    presetsContainer.Position = UDim2.new(0, 0, 0, 20)
+    presetsContainer.Size = UDim2.new(1, 0, 0, 60)
+    presetsContainer.ZIndex = 11
+    presetsContainer.Parent = v1Container
+    
+    local presetsGrid = Instance.new("UIGridLayout")
+    presetsGrid.CellPadding = UDim2.new(0, 4, 0, 4)
+    presetsGrid.CellSize = UDim2.new(0, 75, 0, 28)
+    presetsGrid.SortOrder = Enum.SortOrder.LayoutOrder
+    presetsGrid.Parent = presetsContainer
+    
+    for i, preset in ipairs(presetColors) do
+        local presetBtn = Instance.new("TextButton")
+        presetBtn.Name = preset.name
+        presetBtn.BackgroundColor3 = Color3.fromRGB(preset.r, preset.g, preset.b)
+        presetBtn.BorderSizePixel = 0
+        presetBtn.Text = preset.name
+        presetBtn.Font = Enum.Font.SourceSansBold
+        presetBtn.TextColor3 = Color3.new(1, 1, 1)
+        presetBtn.TextSize = 11
+        presetBtn.TextStrokeTransparency = 0.5
+        presetBtn.ZIndex = 12
+        presetBtn.Parent = presetsContainer
+        
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.CornerRadius = UDim.new(0, 4)
+        btnCorner.Parent = presetBtn
+        
+        presetBtn.MouseButton1Click:Connect(function()
+            currentR = preset.r
+            currentG = preset.g
+            currentB = preset.b
+            selectedColor = Color3.fromRGB(preset.r, preset.g, preset.b)
+            setLightColor(preset.r, preset.g, preset.b)
+            if randomColorEnabled then
+                stopRandomColor()
+            end
+        end)
+    end
+    
+    local slidersLabel = Instance.new("TextLabel")
+    slidersLabel.BackgroundTransparency = 1
+    slidersLabel.Position = UDim2.new(0, 0, 0, 88)
+    slidersLabel.Size = UDim2.new(1, 0, 0, 16)
+    slidersLabel.Font = Enum.Font.SourceSansBold
+    slidersLabel.Text = "RGB Sliders"
+    slidersLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    slidersLabel.TextSize = 13
+    slidersLabel.TextXAlignment = Enum.TextXAlignment.Left
+    slidersLabel.ZIndex = 12
+    slidersLabel.Parent = v1Container
+    
+    local rSliderLabel = Instance.new("TextLabel")
+    rSliderLabel.BackgroundTransparency = 1
+    rSliderLabel.Position = UDim2.new(0, 0, 0, 110)
+    rSliderLabel.Size = UDim2.new(0, 20, 0, 20)
+    rSliderLabel.Font = Enum.Font.SourceSansBold
+    rSliderLabel.Text = "R"
+    rSliderLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+    rSliderLabel.TextSize = 14
+    rSliderLabel.ZIndex = 12
+    rSliderLabel.Parent = v1Container
+    
+    local rSliderBG = Instance.new("Frame")
+    rSliderBG.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    rSliderBG.BorderSizePixel = 0
+    rSliderBG.Position = UDim2.new(0, 25, 0, 115)
+    rSliderBG.Size = UDim2.new(0, 280, 0, 10)
+    rSliderBG.ZIndex = 12
+    rSliderBG.Parent = v1Container
+    
+    local rSliderFill = Instance.new("Frame")
+    rSliderFill.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+    rSliderFill.BorderSizePixel = 0
+    rSliderFill.Size = UDim2.new(1, 0, 1, 0)
+    rSliderFill.ZIndex = 13
+    rSliderFill.Parent = rSliderBG
+    
+    local rSliderKnob = Instance.new("Frame")
+    rSliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    rSliderKnob.BorderColor3 = Color3.fromRGB(0, 0, 0)
+    rSliderKnob.BorderSizePixel = 1
+    rSliderKnob.Position = UDim2.new(1, -6, 0.5, -6)
+    rSliderKnob.Size = UDim2.new(0, 12, 0, 12)
+    rSliderKnob.ZIndex = 14
+    rSliderKnob.Parent = rSliderFill
+    
+    local rKnobCorner = Instance.new("UICorner")
+    rKnobCorner.CornerRadius = UDim.new(1, 0)
+    rKnobCorner.Parent = rSliderKnob
+    
+    local rValueLabel = Instance.new("TextLabel")
+    rValueLabel.BackgroundTransparency = 1
+    rValueLabel.Position = UDim2.new(0, 310, 0, 110)
+    rValueLabel.Size = UDim2.new(0, 50, 0, 20)
+    rValueLabel.Font = Enum.Font.SourceSans
+    rValueLabel.Text = "255"
+    rValueLabel.TextColor3 = Color3.new(1, 1, 1)
+    rValueLabel.TextSize = 13
+    rValueLabel.TextXAlignment = Enum.TextXAlignment.Left
+    rValueLabel.ZIndex = 12
+    rValueLabel.Parent = v1Container
+    
+    local gSliderLabel = Instance.new("TextLabel")
+    gSliderLabel.BackgroundTransparency = 1
+    gSliderLabel.Position = UDim2.new(0, 0, 0, 140)
+    gSliderLabel.Size = UDim2.new(0, 20, 0, 20)
+    gSliderLabel.Font = Enum.Font.SourceSansBold
+    gSliderLabel.Text = "G"
+    gSliderLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+    gSliderLabel.TextSize = 14
+    gSliderLabel.ZIndex = 12
+    gSliderLabel.Parent = v1Container
+    
+    local gSliderBG = Instance.new("Frame")
+    gSliderBG.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    gSliderBG.BorderSizePixel = 0
+    gSliderBG.Position = UDim2.new(0, 25, 0, 145)
+    gSliderBG.Size = UDim2.new(0, 280, 0, 10)
+    gSliderBG.ZIndex = 12
+    gSliderBG.Parent = v1Container
+    
+    local gSliderFill = Instance.new("Frame")
+    gSliderFill.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
+    gSliderFill.BorderSizePixel = 0
+    gSliderFill.Size = UDim2.new(1, 0, 1, 0)
+    gSliderFill.ZIndex = 13
+    gSliderFill.Parent = gSliderBG
+    
+    local gSliderKnob = Instance.new("Frame")
+    gSliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    gSliderKnob.BorderColor3 = Color3.fromRGB(0, 0, 0)
+    gSliderKnob.BorderSizePixel = 1
+    gSliderKnob.Position = UDim2.new(1, -6, 0.5, -6)
+    gSliderKnob.Size = UDim2.new(0, 12, 0, 12)
+    gSliderKnob.ZIndex = 14
+    gSliderKnob.Parent = gSliderFill
+    
+    local gKnobCorner = Instance.new("UICorner")
+    gKnobCorner.CornerRadius = UDim.new(1, 0)
+    gKnobCorner.Parent = gSliderKnob
+    
+    local gValueLabel = Instance.new("TextLabel")
+    gValueLabel.BackgroundTransparency = 1
+    gValueLabel.Position = UDim2.new(0, 310, 0, 140)
+    gValueLabel.Size = UDim2.new(0, 50, 0, 20)
+    gValueLabel.Font = Enum.Font.SourceSans
+    gValueLabel.Text = "255"
+    gValueLabel.TextColor3 = Color3.new(1, 1, 1)
+    gValueLabel.TextSize = 13
+    gValueLabel.TextXAlignment = Enum.TextXAlignment.Left
+    gValueLabel.ZIndex = 12
+    gValueLabel.Parent = v1Container
+    
+    local bSliderLabel = Instance.new("TextLabel")
+    bSliderLabel.BackgroundTransparency = 1
+    bSliderLabel.Position = UDim2.new(0, 0, 0, 170)
+    bSliderLabel.Size = UDim2.new(0, 20, 0, 20)
+    bSliderLabel.Font = Enum.Font.SourceSansBold
+    bSliderLabel.Text = "B"
+    bSliderLabel.TextColor3 = Color3.fromRGB(100, 100, 255)
+    bSliderLabel.TextSize = 14
+    bSliderLabel.ZIndex = 12
+    bSliderLabel.Parent = v1Container
+    
+    local bSliderBG = Instance.new("Frame")
+    bSliderBG.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    bSliderBG.BorderSizePixel = 0
+    bSliderBG.Position = UDim2.new(0, 25, 0, 175)
+    bSliderBG.Size = UDim2.new(0, 280, 0, 10)
+    bSliderBG.ZIndex = 12
+    bSliderBG.Parent = v1Container
+    
+    local bSliderFill = Instance.new("Frame")
+    bSliderFill.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
+    bSliderFill.BorderSizePixel = 0
+    bSliderFill.Size = UDim2.new(1, 0, 1, 0)
+    bSliderFill.ZIndex = 13
+    bSliderFill.Parent = bSliderBG
+    
+    local bSliderKnob = Instance.new("Frame")
+    bSliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    bSliderKnob.BorderColor3 = Color3.fromRGB(0, 0, 0)
+    bSliderKnob.BorderSizePixel = 1
+    bSliderKnob.Position = UDim2.new(1, -6, 0.5, -6)
+    bSliderKnob.Size = UDim2.new(0, 12, 0, 12)
+    bSliderKnob.ZIndex = 14
+    bSliderKnob.Parent = bSliderFill
+    
+    local bKnobCorner = Instance.new("UICorner")
+    bKnobCorner.CornerRadius = UDim.new(1, 0)
+    bKnobCorner.Parent = bSliderKnob
+    
+    local bValueLabel = Instance.new("TextLabel")
+    bValueLabel.BackgroundTransparency = 1
+    bValueLabel.Position = UDim2.new(0, 310, 0, 170)
+    bValueLabel.Size = UDim2.new(0, 50, 0, 20)
+    bValueLabel.Font = Enum.Font.SourceSans
+    bValueLabel.Text = "255"
+    bValueLabel.TextColor3 = Color3.new(1, 1, 1)
+    bValueLabel.TextSize = 13
+    bValueLabel.TextXAlignment = Enum.TextXAlignment.Left
+    bValueLabel.ZIndex = 12
+    bValueLabel.Parent = v1Container
+    
+    local hexLabel = Instance.new("TextLabel")
+    hexLabel.BackgroundTransparency = 1
+    hexLabel.Position = UDim2.new(0, 0, 0, 200)
+    hexLabel.Size = UDim2.new(0, 50, 0, 20)
+    hexLabel.Font = Enum.Font.SourceSansBold
+    hexLabel.Text = "Hex:"
+    hexLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    hexLabel.TextSize = 13
+    hexLabel.TextXAlignment = Enum.TextXAlignment.Left
+    hexLabel.ZIndex = 12
+    hexLabel.Parent = v1Container
+    
+    local hexBox = Instance.new("TextBox")
+    hexBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    hexBox.BorderSizePixel = 0
+    hexBox.Position = UDim2.new(0, 50, 0, 200)
+    hexBox.Size = UDim2.new(0, 100, 0, 20)
+    hexBox.Font = Enum.Font.SourceSans
+    hexBox.PlaceholderText = "#FFFFFF"
+    hexBox.Text = "#FFFFFF"
+    hexBox.TextColor3 = Color3.new(1, 1, 1)
+    hexBox.TextSize = 12
+    hexBox.ZIndex = 12
+    hexBox.Parent = v1Container
+    
+    local hexCorner = Instance.new("UICorner")
+    hexCorner.CornerRadius = UDim.new(0, 4)
+    hexCorner.Parent = hexBox
+    
+    local rDragging = false
+    local gDragging = false
+    local bDragging = false
+    
+    local function updateRSlider(value)
+        currentR = math.clamp(math.floor(value), 0, 255)
+        local percent = currentR / 255
+        rSliderFill.Size = UDim2.new(percent, 0, 1, 0)
+        rValueLabel.Text = tostring(currentR)
+        selectedColor = Color3.fromRGB(currentR, currentG, currentB)
+        setLightColor(currentR, currentG, currentB)
+        hexBox.Text = RGBtoHex(currentR, currentG, currentB)
+        if randomColorEnabled then
+            stopRandomColor()
+        end
+    end
+    
+    local function updateGSlider(value)
+        currentG = math.clamp(math.floor(value), 0, 255)
+        local percent = currentG / 255
+        gSliderFill.Size = UDim2.new(percent, 0, 1, 0)
+        gValueLabel.Text = tostring(currentG)
+        selectedColor = Color3.fromRGB(currentR, currentG, currentB)
+        setLightColor(currentR, currentG, currentB)
+        hexBox.Text = RGBtoHex(currentR, currentG, currentB)
+        if randomColorEnabled then
+            stopRandomColor()
+        end
+    end
+    
+    local function updateBSlider(value)
+        currentB = math.clamp(math.floor(value), 0, 255)
+        local percent = currentB / 255
+        bSliderFill.Size = UDim2.new(percent, 0, 1, 0)
+        bValueLabel.Text = tostring(currentB)
+        selectedColor = Color3.fromRGB(currentR, currentG, currentB)
+        setLightColor(currentR, currentG, currentB)
+        hexBox.Text = RGBtoHex(currentR, currentG, currentB)
+        if randomColorEnabled then
+            stopRandomColor()
+        end
+    end
+    
+    rSliderBG.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            rDragging = true
+            local relativeX = math.clamp(input.Position.X - rSliderBG.AbsolutePosition.X, 0, rSliderBG.AbsoluteSize.X)
+            local value = (relativeX / rSliderBG.AbsoluteSize.X) * 255
+            updateRSlider(value)
+        end
+    end)
+    
+    rSliderBG.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            rDragging = false
+        end
+    end)
+    
+    gSliderBG.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            gDragging = true
+            local relativeX = math.clamp(input.Position.X - gSliderBG.AbsolutePosition.X, 0, gSliderBG.AbsoluteSize.X)
+            local value = (relativeX / gSliderBG.AbsoluteSize.X) * 255
+            updateGSlider(value)
+        end
+    end)
+    
+    gSliderBG.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            gDragging = false
+        end
+    end)
+    
+    bSliderBG.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            bDragging = true
+            local relativeX = math.clamp(input.Position.X - bSliderBG.AbsolutePosition.X, 0, bSliderBG.AbsoluteSize.X)
+            local value = (relativeX / bSliderBG.AbsoluteSize.X) * 255
+            updateBSlider(value)
+        end
+    end)
+    
+    bSliderBG.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            bDragging = false
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            if rDragging then
+                local relativeX = math.clamp(input.Position.X - rSliderBG.AbsolutePosition.X, 0, rSliderBG.AbsoluteSize.X)
+                local value = (relativeX / rSliderBG.AbsoluteSize.X) * 255
+                updateRSlider(value)
+            elseif gDragging then
+                local relativeX = math.clamp(input.Position.X - gSliderBG.AbsolutePosition.X, 0, gSliderBG.AbsoluteSize.X)
+                local value = (relativeX / gSliderBG.AbsoluteSize.X) * 255
+                updateGSlider(value)
+            elseif bDragging then
+                local relativeX = math.clamp(input.Position.X - bSliderBG.AbsolutePosition.X, 0, bSliderBG.AbsoluteSize.X)
+                local value = (relativeX / bSliderBG.AbsoluteSize.X) * 255
+                updateBSlider(value)
+            end
+        end
+    end)
+    
+    hexBox.FocusLost:Connect(function()
+        local r, g, b = HexToRGB(hexBox.Text)
+        if r and g and b then
+            currentR = r
+            currentG = g
+            currentB = b
+            selectedColor = Color3.fromRGB(r, g, b)
+            setLightColor(r, g, b)
+            updateRSlider(r)
+            updateGSlider(g)
+            updateBSlider(b)
+            if randomColorEnabled then
+                stopRandomColor()
+            end
+        else
+            hexBox.Text = RGBtoHex(currentR, currentG, currentB)
+        end
+    end)
+    
+    local v2Label = Instance.new("TextLabel")
+    v2Label.BackgroundTransparency = 1
+    v2Label.Position = UDim2.new(0, 0, 0, 0)
+    v2Label.Size = UDim2.new(1, 0, 0, 16)
+    v2Label.Font = Enum.Font.SourceSansBold
+    v2Label.Text = "Advanced HSV Color Picker"
+    v2Label.TextColor3 = Color3.fromRGB(200, 200, 200)
+    v2Label.TextSize = 13
+    v2Label.TextXAlignment = Enum.TextXAlignment.Left
+    v2Label.ZIndex = 12
+    v2Label.Parent = v2Container
+    
+    local colorSpace = Instance.new("ImageButton")
+    colorSpace.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    colorSpace.BorderSizePixel = 0
+    colorSpace.Position = UDim2.new(0, 0, 0, 20)
+    colorSpace.Size = UDim2.new(0, 240, 0, 220)
+    colorSpace.Image = "rbxassetid://4155801252"
+    colorSpace.ImageColor3 = Color3.fromRGB(255, 0, 0)
+    colorSpace.AutoButtonColor = false
+    colorSpace.ZIndex = 12
+    colorSpace.Active = false
+    colorSpace.Parent = v2Container
+    
+    local colorStrip = Instance.new("Frame")
+    colorStrip.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    colorStrip.BorderSizePixel = 0
+    colorStrip.Position = UDim2.new(0, 250, 0, 20)
+    colorStrip.Size = UDim2.new(0, 25, 0, 220)
+    colorStrip.ZIndex = 12
+    colorStrip.Parent = v2Container
+    
+    local stripGradient = Instance.new("UIGradient")
+    stripGradient.Rotation = 90
+    stripGradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
+        ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 255, 0)),
+        ColorSequenceKeypoint.new(0.33, Color3.fromRGB(0, 255, 0)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0, 255, 255)),
+        ColorSequenceKeypoint.new(0.67, Color3.fromRGB(0, 0, 255)),
+        ColorSequenceKeypoint.new(0.83, Color3.fromRGB(255, 0, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0))
+    }
+    stripGradient.Parent = colorStrip
+    
+    local colorScope = Instance.new("Frame")
+    colorScope.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    colorScope.BorderColor3 = Color3.fromRGB(0, 0, 0)
+    colorScope.BorderSizePixel = 2
+    colorScope.Position = UDim2.new(1, -8, 1, -8)
+    colorScope.Size = UDim2.new(0, 12, 0, 12)
+    colorScope.ZIndex = 13
+    colorScope.Parent = colorSpace
+    
+    local scopeCorner = Instance.new("UICorner")
+    scopeCorner.CornerRadius = UDim.new(1, 0)
+    scopeCorner.Parent = colorScope
+    
+    local hueSelector = Instance.new("Frame")
+    hueSelector.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    hueSelector.BorderColor3 = Color3.fromRGB(0, 0, 0)
+    hueSelector.BorderSizePixel = 2
+    hueSelector.Position = UDim2.new(0.5, -8, 0, -8)
+    hueSelector.Size = UDim2.new(0, 16, 0, 8)
+    hueSelector.ZIndex = 13
+    hueSelector.Parent = colorStrip
+    
+    currentHue2 = 0
+    currentSat = 1
+    currentVal = 1
+    
+    local function updateV2Color()
+        local r, g, b = HSVtoRGB(currentHue2, currentSat, currentVal)
+        selectedColor = Color3.fromRGB(r, g, b)
+        setLightColor(r, g, b)
+        
+        local hueColor = Color3.fromHSV(currentHue2, 1, 1)
+        colorSpace.ImageColor3 = hueColor
+        colorSpace.BackgroundColor3 = hueColor
+        
+        if randomColorEnabled then
+            stopRandomColor()
+        end
+    end
+    
+    local colorSpaceDragging = false
+    local hueStripDragging = false
+    
+    colorSpace.MouseButton1Down:Connect(function()
+        colorSpaceDragging = true
+    end)
+    
+    colorSpace.MouseButton1Up:Connect(function()
+        colorSpaceDragging = false
+    end)
+    
+    colorSpace.MouseLeave:Connect(function()
+        colorSpaceDragging = false
+    end)
+    
+    colorSpace.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            colorSpaceDragging = true
+        end
+    end)
+    
+    colorSpace.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            colorSpaceDragging = false
+        end
+    end)
+    
+    colorStrip.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            hueStripDragging = true
+            local relativeY = math.clamp(input.Position.Y - colorStrip.AbsolutePosition.Y, 0, colorStrip.AbsoluteSize.Y)
+            currentHue2 = relativeY / colorStrip.AbsoluteSize.Y
+            hueSelector.Position = UDim2.new(0.5, -8, 0, relativeY - 4)
+            updateV2Color()
+        end
+    end)
+    
+    colorStrip.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            hueStripDragging = false
+        end
+    end)
+    
+    local lastUpdate = tick()
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if tick() - lastUpdate < 0.016 then return end
+        lastUpdate = tick()
+        
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            if colorSpaceDragging then
+                local relativeX = math.clamp(input.Position.X - colorSpace.AbsolutePosition.X, 0, colorSpace.AbsoluteSize.X)
+                local relativeY = math.clamp(input.Position.Y - colorSpace.AbsolutePosition.Y, 0, colorSpace.AbsoluteSize.Y)
+                currentSat = relativeX / colorSpace.AbsoluteSize.X
+                currentVal = 1 - (relativeY / colorSpace.AbsoluteSize.Y)
+                colorScope.Position = UDim2.new(0, relativeX - 6, 0, relativeY - 6)
+                updateV2Color()
+            elseif hueStripDragging then
+                local relativeY = math.clamp(input.Position.Y - colorStrip.AbsolutePosition.Y, 0, colorStrip.AbsoluteSize.Y)
+                currentHue2 = relativeY / colorStrip.AbsoluteSize.Y
+                hueSelector.Position = UDim2.new(0.5, -8, 0, relativeY - 4)
+                updateV2Color()
+            end
+        end
+    end)
+    
+    versionDropdown.MouseButton1Click:Connect(function()
+        pickerVersion = pickerVersion == 1 and 2 or 1
+        versionDropdown.Text = "V" .. pickerVersion
+        v1Container.Visible = pickerVersion == 1
+        v2Container.Visible = pickerVersion == 2
+    end)
+    
+    local autoColorLabel = Instance.new("TextLabel")
+    autoColorLabel.BackgroundTransparency = 1
+    autoColorLabel.Position = UDim2.new(0, 10, 1, -36)
+    autoColorLabel.Size = UDim2.new(0, 80, 0, 20)
+    autoColorLabel.Font = Enum.Font.SourceSansBold
+    autoColorLabel.Text = "Auto Color:"
+    autoColorLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    autoColorLabel.TextSize = 13
+    autoColorLabel.TextXAlignment = Enum.TextXAlignment.Left
+    autoColorLabel.ZIndex = 12
+    autoColorLabel.Parent = contentFrame
+    
+    local autoColorToggle = Instance.new("TextButton")
+    autoColorToggle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    autoColorToggle.BackgroundTransparency = 0.3
+    autoColorToggle.BorderColor3 = Color3.fromRGB(255, 255, 255)
+    autoColorToggle.BorderSizePixel = 1
+    autoColorToggle.Position = UDim2.new(0, 95, 1, -36)
+    autoColorToggle.Size = UDim2.new(0, 50, 0, 20)
+    autoColorToggle.Font = Enum.Font.SourceSansBold
+    autoColorToggle.Text = "OFF"
+    autoColorToggle.TextColor3 = Color3.fromRGB(255, 100, 100)
+    autoColorToggle.TextSize = 12
+    autoColorToggle.ZIndex = 12
+    autoColorToggle.Parent = contentFrame
+    
+    local autoCorner = Instance.new("UICorner")
+    autoCorner.CornerRadius = UDim.new(0, 4)
+    autoCorner.Parent = autoColorToggle
+    
+    autoColorToggle.MouseButton1Click:Connect(function()
+        if autoColorEnabled then
+            stopAutoColor()
+            autoColorToggle.Text = "OFF"
+            autoColorToggle.TextColor3 = Color3.fromRGB(255, 100, 100)
+            autoColorToggle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        else
+            local light = getPlayerLight()
+            if not light then
+                light = createLightIfNeeded()
+            end
+            if light then
+                startAutoColor()
+                autoColorToggle.Text = "ON"
+                autoColorToggle.TextColor3 = Color3.fromRGB(100, 255, 100)
+                autoColorToggle.BackgroundColor3 = Color3.fromRGB(20, 60, 20)
+            end
+        end
+    end)
+    
+    local randomColorLabel = Instance.new("TextLabel")
+    randomColorLabel.BackgroundTransparency = 1
+    randomColorLabel.Position = UDim2.new(0, 155, 1, -36)
+    randomColorLabel.Size = UDim2.new(0, 100, 0, 20)
+    randomColorLabel.Font = Enum.Font.SourceSansBold
+    randomColorLabel.Text = "Random Color:"
+    randomColorLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    randomColorLabel.TextSize = 13
+    randomColorLabel.TextXAlignment = Enum.TextXAlignment.Left
+    randomColorLabel.ZIndex = 12
+    randomColorLabel.Parent = contentFrame
+    
+    local randomColorToggle = Instance.new("TextButton")
+    randomColorToggle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    randomColorToggle.BackgroundTransparency = 0.3
+    randomColorToggle.BorderColor3 = Color3.fromRGB(255, 255, 255)
+    randomColorToggle.BorderSizePixel = 1
+    randomColorToggle.Position = UDim2.new(0, 260, 1, -36)
+    randomColorToggle.Size = UDim2.new(0, 50, 0, 20)
+    randomColorToggle.Font = Enum.Font.SourceSansBold
+    randomColorToggle.Text = "OFF"
+    randomColorToggle.TextColor3 = Color3.fromRGB(255, 100, 100)
+    randomColorToggle.TextSize = 12
+    randomColorToggle.ZIndex = 12
+    randomColorToggle.Parent = contentFrame
+    
+    local randomCorner = Instance.new("UICorner")
+    randomCorner.CornerRadius = UDim.new(0, 4)
+    randomCorner.Parent = randomColorToggle
+    
+    randomColorToggle.MouseButton1Click:Connect(function()
+        if randomColorEnabled then
+            stopRandomColor()
+            randomColorToggle.Text = "OFF"
+            randomColorToggle.TextColor3 = Color3.fromRGB(255, 100, 100)
+            randomColorToggle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        else
+            local light = getPlayerLight()
+            if not light then
+                light = createLightIfNeeded()
+            end
+            if light then
+                if autoColorEnabled then
+                    stopAutoColor()
+                    autoColorToggle.Text = "OFF"
+                    autoColorToggle.TextColor3 = Color3.fromRGB(255, 100, 100)
+                    autoColorToggle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+                end
+                startRandomColor()
+                randomColorToggle.Text = "ON"
+                randomColorToggle.TextColor3 = Color3.fromRGB(100, 255, 100)
+                randomColorToggle.BackgroundColor3 = Color3.fromRGB(20, 60, 20)
+            end
+        end
+    end)
+    
+    local resetButton = Instance.new("TextButton")
+    resetButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    resetButton.BackgroundTransparency = 0.3
+    resetButton.BorderColor3 = Color3.fromRGB(255, 255, 255)
+    resetButton.BorderSizePixel = 1
+    resetButton.Position = UDim2.new(0, 320, 1, -36)
+    resetButton.Size = UDim2.new(0, 80, 0, 20)
+    resetButton.Font = Enum.Font.SourceSansBold
+    resetButton.Text = "Reset"
+    resetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    resetButton.TextSize = 13
+    resetButton.ZIndex = 12
+    resetButton.Parent = contentFrame
+    
+    local resetCorner = Instance.new("UICorner")
+    resetCorner.CornerRadius = UDim.new(0, 4)
+    resetCorner.Parent = resetButton
+    
+    resetButton.MouseButton1Click:Connect(function()
+        currentR = 255
+        currentG = 255
+        currentB = 255
+        selectedColor = Color3.fromRGB(255, 255, 255)
+        setLightColor(255, 255, 255)
+        updateRSlider(255)
+        updateGSlider(255)
+        updateBSlider(255)
+        hexBox.Text = "#FFFFFF"
+        if autoColorEnabled then
+            stopAutoColor()
+            autoColorToggle.Text = "OFF"
+            autoColorToggle.TextColor3 = Color3.fromRGB(255, 100, 100)
+            autoColorToggle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        end
+        if randomColorEnabled then
+            stopRandomColor()
+            randomColorToggle.Text = "OFF"
+            randomColorToggle.TextColor3 = Color3.fromRGB(255, 100, 100)
+            randomColorToggle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        end
+    end)
+    
+    local function closeGUI()
+        stopAutoColor()
+        stopRandomColor()
+        mainFrame:TweenPosition(GUI_START_POS, "InOut", "Quart", 0.4, true, function()
+            ScreenGui:Destroy()
+            colorPickerOpen = false
+        end)
+    end
+    
+    closeButton.MouseButton1Click:Connect(closeGUI)
+    
+    dragGUI(mainFrame, mainFrame)
+    
+    mainFrame:TweenPosition(GUI_END_POS, "InOut", "Quart", 0.5, true)
+end
+
+setupRespawnHandler()
+
+createLightIfNeeded()
+createColorPickerGUI()
+end)
+
 addcmd('Evade',{'evade GUI'},function(args, speaker)
 -- Evade Game Script
 -- Load Orion Library
@@ -26242,7 +27477,6 @@ local ByNameTab = Window:MakeTab({
     Icon = "rbxassetid://18557173114",
     PremiumOnly = false
 })
-
 ByNameTab:AddTextbox({
     Name = "Name disable tool",
     Default = "",
