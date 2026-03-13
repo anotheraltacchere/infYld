@@ -11326,28 +11326,32 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local Camera = workspace.CurrentCamera
 
--- Configuration
 local settings = {
-    maxDistance = 7,
+    maxDistance = 13,
     showHighlight = true,
     targetMode = "Nearest",
     weaponOutEnabled = false,
-    weaponOutDistance = 10,
+    weaponOutDistance = 12,
     weaponV2Enabled = false,
     guiLocked = false,
-    checkSpeed = 0.1,
+    checkSpeed = 0.01,
     extremeFast = false,
     doBlockAnimation = false,
     alwaysWhileEquipped = false,
     animStopDelay = 0.6,
-    animStopMethod = "Both", -- "Stunned", "Parry", "Both"
+    animStopMethod = "Both",
     rspyEnabled = false,
-    rspyUpdateDelay = 12
+    rspyUpdateDelay = 12,
+    hitOnlyNoWeapon = false,
+    hitOnlyNotBlocking = false,
+    autoMode = false,
+    guiLayout = "Legacy"
 }
 
 local HIGHLIGHT_COLOR = Color3.fromRGB(255, 255, 255)
@@ -11355,21 +11359,75 @@ local HIGHLIGHT_FILL_TRANSPARENCY = 0.9
 local HIGHLIGHT_OUTLINE_TRANSPARENCY = 0
 local CROSSHAIR_OFFSET = Vector2.new(0, -30)
 
--- RSpy System Variables
 local currentRemotePath = "k\239\188\151l\239\188\148ZO\227\129\158wat\227\129\155\227\129\134\227\129\160"
 local spiedRemotePath = nil
 local originalNamecall = nil
 local configFolder = "TargetTrackerConfig"
 local configFile = "remote_config.txt"
 
--- Animation System Variables
 local cachedAnimation = nil
 local cachedAnimationId = nil
 local lastAnimationUpdate = 0
 local currentAnimationTrack = nil
 local animationStartTime = 0
 
--- File system functions
+local GUI_LAYOUTS = {
+    Legacy = {
+        MainFrame = {
+            Size = UDim2.new(0, 200, 0, 50),
+            Position = UDim2.new(0.5, -100, 0.1, 0)
+        },
+        AttackButton = {
+            Size = UDim2.new(1, -20, 0, 30),
+            Position = UDim2.new(0, 10, 0.5, -15)
+        },
+        LockToggle = {
+            Size = UDim2.new(0, 12, 0, 12),
+            Position = UDim2.new(1, -35, 0, 5)
+        },
+        SettingsToggle = {
+            Size = UDim2.new(0, 18, 0, 18),
+            Position = UDim2.new(1, -18, 0, 2)
+        }
+    },
+    New = {
+        MainFrame = {
+            Size = UDim2.new(0, 200, 0, 50),
+            Position = UDim2.new(0.5, 51, 0.1, 72)
+        },
+        AttackButton = {
+            Size = UDim2.new(1, -1, 0, 39),
+            Position = UDim2.new(0, 1, 0.5, -15)
+        },
+        LockToggle = {
+            Size = UDim2.new(0, 12, 0, 12),
+            Position = UDim2.new(1, -35, 0, 5)
+        },
+        SettingsToggle = {
+            Size = UDim2.new(0, 18, 0, 18),
+            Position = UDim2.new(1, -18, 0, 2)
+        }
+    },
+    LargerNew = {
+        MainFrame = {
+            Size = UDim2.new(0, 150, 0, 100),
+            Position = UDim2.new(0.5, 72, 0.1, 61)
+        },
+        AttackButton = {
+            Size = UDim2.new(1, -1, 0, 89),
+            Position = UDim2.new(0, 1, 0.5, -40)
+        },
+        LockToggle = {
+            Size = UDim2.new(0, 12, 0, 12),
+            Position = UDim2.new(1, -35, 0, 5)
+        },
+        SettingsToggle = {
+            Size = UDim2.new(0, 18, 0, 18),
+            Position = UDim2.new(1, -18, 0, 2)
+        }
+    }
+}
+
 local function saveRemoteToConfig(remotePath)
     if not isfolder then return end
     if not writefile then return end
@@ -11392,7 +11450,6 @@ local function loadRemoteFromConfig()
     return nil
 end
 
--- RSpy System
 local function setupRSpy()
     if originalNamecall then return end
     
@@ -11410,19 +11467,16 @@ local function setupRSpy()
         local args = {...}
         
         if method == "FireServer" and typeof(self) == "Instance" then
-            -- Check if this matches our attack pattern
             if #args >= 4 then
                 local arg1 = args[2]
                 local arg2 = args[3]
                 local arg3 = args[4]
                 
-                -- Pattern: String, Tool/Part, Part/Tool, CFrame
                 if typeof(arg1) == "string" and 
                    (typeof(arg2) == "Instance") and 
                    (typeof(arg3) == "Instance") and
                    (arg1:find("HIT") or arg1:find("WOAH") or arg1:find("BLOCK")) then
                     
-                    -- Found potential remote
                     local remoteName = self.Name
                     if remoteName ~= spiedRemotePath then
                         spiedRemotePath = remoteName
@@ -11445,7 +11499,6 @@ local function destroyRSpy()
     end
 end
 
--- Initialize remote from config
 local function initializeRemote()
     local savedRemote = loadRemoteFromConfig()
     if savedRemote and savedRemote ~= "" then
@@ -11454,16 +11507,13 @@ local function initializeRemote()
     end
 end
 
--- Animation System
 local function findBlockAnimation()
     local tool = nil
     
-    -- Check character first
     if LocalPlayer.Character then
         tool = LocalPlayer.Character:FindFirstChild("<TN~!1>")
     end
     
-    -- Check backpack if not in character
     if not tool and LocalPlayer:FindFirstChild("Backpack") then
         tool = LocalPlayer.Backpack:FindFirstChild("<TN~!1>")
     end
@@ -11484,12 +11534,22 @@ local function updateCachedAnimation()
     if animId and animId ~= cachedAnimationId then
         cachedAnimationId = animId
         
-        -- Create animation object
         local anim = Instance.new("Animation")
         anim.AnimationId = animId
         cachedAnimation = anim
         
         print("[Animation] Cached new animation:", animId)
+    end
+end
+
+local function stopAllAnimations(humanoid)
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if animator then
+        for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+            if track ~= currentAnimationTrack then
+                track:Stop()
+            end
+        end
     end
 end
 
@@ -11500,23 +11560,22 @@ local function playBlockAnimation()
     local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
     if not humanoid then return end
     
-    -- Check if weapon is equipped
     local weaponEquipped = LocalPlayer.Character:FindFirstChild("<TN~!1>")
     if not weaponEquipped then return end
     
-    -- If already playing and "always while equipped" is off, don't restart
     if currentAnimationTrack and currentAnimationTrack.IsPlaying and not settings.alwaysWhileEquipped then
         return
     end
     
     if cachedAnimation then
-        -- Stop previous animation
         if currentAnimationTrack then
             currentAnimationTrack:Stop()
         end
         
-        -- Load and play new animation
+        stopAllAnimations(humanoid)
+        
         currentAnimationTrack = humanoid:LoadAnimation(cachedAnimation)
+        currentAnimationTrack.Priority = Enum.AnimationPriority.Action4
         currentAnimationTrack:Play()
         animationStartTime = tick()
     end
@@ -11537,12 +11596,10 @@ local function checkAnimationStopConditions(target)
     local shouldStop = false
     local currentTime = tick()
     
-    -- Check time-based stop
     if currentTime - animationStartTime >= settings.animStopDelay then
         shouldStop = true
     end
     
-    -- Check target conditions
     if target and target.Character then
         local targetTool = target.Character:FindFirstChildOfClass("Tool")
         
@@ -11568,14 +11625,12 @@ local function checkAnimationStopConditions(target)
     end
 end
 
--- Create ScreenGui
 local function createGui()
     local gui = Instance.new("ScreenGui")
     gui.Name = "TargetTrackerGui"
     gui.ResetOnSpawn = false
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     
-    -- Main frame
     local frame = Instance.new("Frame")
     frame.Name = "MainFrame"
     frame.Size = UDim2.new(0, 200, 0, 50)
@@ -11589,7 +11644,6 @@ local function createGui()
     frameCorner.CornerRadius = UDim.new(0, 8)
     frameCorner.Parent = frame
     
-    -- Lock Toggle
     local lockToggle = Instance.new("TextButton")
     lockToggle.Name = "LockToggle"
     lockToggle.Size = UDim2.new(0, 12, 0, 12)
@@ -11604,7 +11658,6 @@ local function createGui()
     lockCorner.CornerRadius = UDim.new(1, 0)
     lockCorner.Parent = lockToggle
     
-    -- Settings Toggle
     local settingsToggle = Instance.new("TextButton")
     settingsToggle.Name = "SettingsToggle"
     settingsToggle.Size = UDim2.new(0, 18, 0, 18)
@@ -11620,7 +11673,6 @@ local function createGui()
     settingsCorner.CornerRadius = UDim.new(0, 4)
     settingsCorner.Parent = settingsToggle
     
-    -- Button
     local button = Instance.new("TextButton")
     button.Name = "AttackButton"
     button.Size = UDim2.new(1, -20, 0, 30)
@@ -11639,7 +11691,6 @@ local function createGui()
     buttonCorner.CornerRadius = UDim.new(0, 6)
     buttonCorner.Parent = button
     
-    -- Settings Panel
     local settingsPanel = Instance.new("Frame")
     settingsPanel.Name = "SettingsPanel"
     settingsPanel.Size = UDim2.new(0, 280, 0, 400)
@@ -11655,7 +11706,6 @@ local function createGui()
     panelCorner.CornerRadius = UDim.new(0, 8)
     panelCorner.Parent = settingsPanel
     
-    -- Panel Title
     local panelTitle = Instance.new("TextLabel")
     panelTitle.Size = UDim2.new(1, 0, 0, 30)
     panelTitle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
@@ -11670,14 +11720,13 @@ local function createGui()
     titleCorner.CornerRadius = UDim.new(0, 8)
     titleCorner.Parent = panelTitle
     
-    -- Scrolling Frame
     local scrollFrame = Instance.new("ScrollingFrame")
     scrollFrame.Size = UDim2.new(1, -10, 1, -40)
     scrollFrame.Position = UDim2.new(0, 5, 0, 35)
     scrollFrame.BackgroundTransparency = 1
     scrollFrame.BorderSizePixel = 0
     scrollFrame.ScrollBarThickness = 6
-    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 750)
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 900)
     scrollFrame.Parent = settingsPanel
     
     local function createLabel(text, yPos)
@@ -11768,7 +11817,6 @@ local function createGui()
         return sep
     end
     
-    -- Create settings elements
     local yOffset = 10
     
     createLabel("Check Speed (seconds):", yOffset)
@@ -11789,6 +11837,21 @@ local function createGui()
     
     createLabel("Target Mode:", yOffset)
     local modeButton = createModeButton("ModeButton", yOffset, settings.targetMode)
+    yOffset = yOffset + 35
+    
+    createSeparator(yOffset)
+    yOffset = yOffset + 15
+    
+    createLabel("Hit Only if No Weapon:", yOffset)
+    local hitNoWeaponToggle = createToggle("HitNoWeaponToggle", yOffset, settings.hitOnlyNoWeapon)
+    yOffset = yOffset + 30
+    
+    createLabel("Hit Only if Not Blocking:", yOffset)
+    local hitNotBlockingToggle = createToggle("HitNotBlockingToggle", yOffset, settings.hitOnlyNotBlocking)
+    yOffset = yOffset + 30
+    
+    createLabel("Auto Mode:", yOffset)
+    local autoModeToggle = createToggle("AutoModeToggle", yOffset, settings.autoMode)
     yOffset = yOffset + 35
     
     createSeparator(yOffset)
@@ -11834,16 +11897,22 @@ local function createGui()
     
     createLabel("RSpy Update Delay (sec):", yOffset)
     local rspyDelayInput = createTextBox("RSpyDelayInput", yOffset, settings.rspyUpdateDelay)
+    yOffset = yOffset + 35
+    
+    createSeparator(yOffset)
+    yOffset = yOffset + 15
+    
+    createLabel("GUI Layout:", yOffset)
+    local layoutButton = createModeButton("LayoutButton", yOffset, settings.guiLayout)
     yOffset = yOffset + 30
     
     return gui, frame, button, lockToggle, settingsToggle, settingsPanel,
            checkSpeedInput, extremeFastToggle, studsInput, highlightToggle, modeButton,
            weaponToggle, weaponDistInput, weaponV2Toggle,
            blockAnimToggle, alwaysEquippedToggle, animStopInput, animStopMethodBtn,
-           rspyToggle, rspyDelayInput
+           rspyToggle, rspyDelayInput, hitNoWeaponToggle, hitNotBlockingToggle, autoModeToggle, layoutButton
 end
 
--- Make frame draggable
 local function makeDraggable(frame, button, lockToggle, settingsToggle)
     local dragging = false
     local dragInput, dragStart, startPos
@@ -11904,7 +11973,6 @@ local function makeDraggable(frame, button, lockToggle, settingsToggle)
     end)
 end
 
--- Make settings panel draggable
 local function makeSettingsDraggable(panel)
     local dragging = false
     local dragInput, dragStart, startPos
@@ -11944,7 +12012,47 @@ local function makeSettingsDraggable(panel)
     end
 end
 
--- Create highlight
+local function applyGuiLayout(frame, layoutName)
+    local layout = GUI_LAYOUTS[layoutName]
+    if not layout then return end
+    
+    local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    
+    local frameTween = TweenService:Create(frame, tweenInfo, {
+        Size = layout.MainFrame.Size,
+        Position = layout.MainFrame.Position
+    })
+    
+    local attackButton = frame:FindFirstChild("AttackButton")
+    if attackButton then
+        local buttonTween = TweenService:Create(attackButton, tweenInfo, {
+            Size = layout.AttackButton.Size,
+            Position = layout.AttackButton.Position
+        })
+        buttonTween:Play()
+    end
+    
+    local lockToggle = frame:FindFirstChild("LockToggle")
+    if lockToggle then
+        local lockTween = TweenService:Create(lockToggle, tweenInfo, {
+            Size = layout.LockToggle.Size,
+            Position = layout.LockToggle.Position
+        })
+        lockTween:Play()
+    end
+    
+    local settingsToggle = frame:FindFirstChild("SettingsToggle")
+    if settingsToggle then
+        local settingsTween = TweenService:Create(settingsToggle, tweenInfo, {
+            Size = layout.SettingsToggle.Size,
+            Position = layout.SettingsToggle.Position
+        })
+        settingsTween:Play()
+    end
+    
+    frameTween:Play()
+end
+
 local function createHighlight(character)
     if not settings.showHighlight then return nil end
     
@@ -11964,7 +12072,6 @@ local function createHighlight(character)
     return highlight
 end
 
--- Check if player character
 local function isPlayerCharacter(instance)
     if LocalPlayer.Character and (instance == LocalPlayer.Character) then
         return false, nil
@@ -12027,7 +12134,29 @@ function findPlayerNameForDisguise(character)
     return character.Name
 end
 
--- Find nearest target
+local function canHitTarget(target)
+    if not target or not target.Character then return false end
+    
+    if settings.hitOnlyNoWeapon then
+        local targetTool = target.Character:FindFirstChildOfClass("Tool")
+        if targetTool then
+            return false
+        end
+    end
+    
+    if settings.hitOnlyNotBlocking then
+        local targetTool = target.Character:FindFirstChildOfClass("Tool")
+        if targetTool then
+            local blockingAttr = targetTool:GetAttribute("Blocking")
+            if blockingAttr == true then
+                return false
+            end
+        end
+    end
+    
+    return true
+end
+
 local function findNearestTarget()
     if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
         return nil
@@ -12095,8 +12224,9 @@ local function findNearestTarget()
     return nearestPlayer
 end
 
--- Fire remote
 local function fireTargetRemote(target)
+    if not canHitTarget(target) then return end
+    
     local remoteEvent = ReplicatedStorage:FindFirstChild(currentRemotePath)
     
     if not remoteEvent then
@@ -12123,7 +12253,6 @@ local function fireTargetRemote(target)
     end
 end
 
--- Weapon system
 local lastWeaponCheck = 0
 
 local function equipWeapon()
@@ -12181,7 +12310,6 @@ local function checkWeaponSystem()
     return shouldEquip
 end
 
--- Main
 local function main()
     initializeRemote()
     
@@ -12189,7 +12317,7 @@ local function main()
           checkSpeedInput, extremeFastToggle, studsInput, highlightToggle, modeButton,
           weaponToggle, weaponDistInput, weaponV2Toggle,
           blockAnimToggle, alwaysEquippedToggle, animStopInput, animStopMethodBtn,
-          rspyToggle, rspyDelayInput = createGui()
+          rspyToggle, rspyDelayInput, hitNoWeaponToggle, hitNotBlockingToggle, autoModeToggle, layoutButton = createGui()
     
     makeDraggable(frame, button, lockToggle, settingsToggle)
     makeSettingsDraggable(settingsPanel)
@@ -12198,18 +12326,15 @@ local function main()
     local currentTarget = nil
     local currentHighlight = nil
     
-    -- Lock toggle
     lockToggle.MouseButton1Click:Connect(function()
         settings.guiLocked = not settings.guiLocked
         lockToggle.BackgroundColor3 = settings.guiLocked and Color3.fromRGB(100, 30, 30) or Color3.fromRGB(30, 30, 30)
     end)
     
-    -- Settings toggle
     settingsToggle.MouseButton1Click:Connect(function()
         settingsPanel.Visible = not settingsPanel.Visible
     end)
     
-    -- Check speed input
     checkSpeedInput.FocusLost:Connect(function()
         local value = tonumber(checkSpeedInput.Text)
         if value and value > 0 then
@@ -12219,14 +12344,12 @@ local function main()
         end
     end)
     
-    -- Extreme fast toggle
     extremeFastToggle.MouseButton1Click:Connect(function()
         settings.extremeFast = not settings.extremeFast
         extremeFastToggle.Text = settings.extremeFast and "ON" or "OFF"
         extremeFastToggle.BackgroundColor3 = settings.extremeFast and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
     end)
     
-    -- Studs input
     studsInput.FocusLost:Connect(function()
         local value = tonumber(studsInput.Text)
         if value and value > 0 then
@@ -12236,7 +12359,6 @@ local function main()
         end
     end)
     
-    -- Highlight toggle
     highlightToggle.MouseButton1Click:Connect(function()
         settings.showHighlight = not settings.showHighlight
         highlightToggle.Text = settings.showHighlight and "ON" or "OFF"
@@ -12248,20 +12370,35 @@ local function main()
         end
     end)
     
-    -- Mode button
     modeButton.MouseButton1Click:Connect(function()
         settings.targetMode = settings.targetMode == "Nearest" and "Crosshair" or "Nearest"
         modeButton.Text = settings.targetMode
     end)
     
-    -- Weapon toggle
+    hitNoWeaponToggle.MouseButton1Click:Connect(function()
+        settings.hitOnlyNoWeapon = not settings.hitOnlyNoWeapon
+        hitNoWeaponToggle.Text = settings.hitOnlyNoWeapon and "ON" or "OFF"
+        hitNoWeaponToggle.BackgroundColor3 = settings.hitOnlyNoWeapon and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
+    end)
+    
+    hitNotBlockingToggle.MouseButton1Click:Connect(function()
+        settings.hitOnlyNotBlocking = not settings.hitOnlyNotBlocking
+        hitNotBlockingToggle.Text = settings.hitOnlyNotBlocking and "ON" or "OFF"
+        hitNotBlockingToggle.BackgroundColor3 = settings.hitOnlyNotBlocking and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
+    end)
+    
+    autoModeToggle.MouseButton1Click:Connect(function()
+        settings.autoMode = not settings.autoMode
+        autoModeToggle.Text = settings.autoMode and "ON" or "OFF"
+        autoModeToggle.BackgroundColor3 = settings.autoMode and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
+    end)
+    
     weaponToggle.MouseButton1Click:Connect(function()
         settings.weaponOutEnabled = not settings.weaponOutEnabled
         weaponToggle.Text = settings.weaponOutEnabled and "ON" or "OFF"
         weaponToggle.BackgroundColor3 = settings.weaponOutEnabled and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
     end)
     
-    -- Weapon distance input
     weaponDistInput.FocusLost:Connect(function()
         local value = tonumber(weaponDistInput.Text)
         if value and value > 0 then
@@ -12271,14 +12408,12 @@ local function main()
         end
     end)
     
-    -- Weapon V2 toggle
     weaponV2Toggle.MouseButton1Click:Connect(function()
         settings.weaponV2Enabled = not settings.weaponV2Enabled
         weaponV2Toggle.Text = settings.weaponV2Enabled and "ON" or "OFF"
         weaponV2Toggle.BackgroundColor3 = settings.weaponV2Enabled and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
     end)
     
-    -- Block animation toggle
     blockAnimToggle.MouseButton1Click:Connect(function()
         settings.doBlockAnimation = not settings.doBlockAnimation
         blockAnimToggle.Text = settings.doBlockAnimation and "ON" or "OFF"
@@ -12289,14 +12424,12 @@ local function main()
         end
     end)
     
-    -- Always equipped toggle
     alwaysEquippedToggle.MouseButton1Click:Connect(function()
         settings.alwaysWhileEquipped = not settings.alwaysWhileEquipped
         alwaysEquippedToggle.Text = settings.alwaysWhileEquipped and "ON" or "OFF"
         alwaysEquippedToggle.BackgroundColor3 = settings.alwaysWhileEquipped and Color3.fromRGB(0, 150, 60) or Color3.fromRGB(60, 60, 65)
     end)
     
-    -- Anim stop delay input
     animStopInput.FocusLost:Connect(function()
         local value = tonumber(animStopInput.Text)
         if value and value > 0 then
@@ -12306,7 +12439,6 @@ local function main()
         end
     end)
     
-    -- Anim stop method button
     animStopMethodBtn.MouseButton1Click:Connect(function()
         if settings.animStopMethod == "Stunned" then
             settings.animStopMethod = "Parry"
@@ -12318,7 +12450,6 @@ local function main()
         animStopMethodBtn.Text = settings.animStopMethod
     end)
     
-    -- RSpy toggle
     rspyToggle.MouseButton1Click:Connect(function()
         settings.rspyEnabled = not settings.rspyEnabled
         rspyToggle.Text = settings.rspyEnabled and "ON" or "OFF"
@@ -12331,7 +12462,6 @@ local function main()
         end
     end)
     
-    -- RSpy delay input
     rspyDelayInput.FocusLost:Connect(function()
         local value = tonumber(rspyDelayInput.Text)
         if value and value > 0 then
@@ -12341,7 +12471,18 @@ local function main()
         end
     end)
     
-    -- Update target
+    layoutButton.MouseButton1Click:Connect(function()
+        if settings.guiLayout == "Legacy" then
+            settings.guiLayout = "New"
+        elseif settings.guiLayout == "New" then
+            settings.guiLayout = "LargerNew"
+        else
+            settings.guiLayout = "Legacy"
+        end
+        layoutButton.Text = settings.guiLayout
+        applyGuiLayout(frame, settings.guiLayout)
+    end)
+    
     local function updateTarget()
         if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
             return
@@ -12403,44 +12544,38 @@ local function main()
         end
     end
     
-    -- Button click
     button.MouseButton1Click:Connect(function()
         if currentTarget then
             fireTargetRemote(currentTarget)
             
-            -- Play block animation if enabled
             if settings.doBlockAnimation then
                 playBlockAnimation()
             end
         end
     end)
     
-    -- Main update loop
     local lastCheck = 0
     local lastAnimUpdate = 0
+    local lastAutoHit = 0
     
     RunService.Heartbeat:Connect(function()
         local currentTime = tick()
         
-        -- Update animation cache every 2 seconds
         if currentTime - lastAnimUpdate >= 2 then
             updateCachedAnimation()
             lastAnimUpdate = currentTime
         end
         
-        -- Check animation stop conditions
         if settings.doBlockAnimation and currentAnimationTrack and currentAnimationTrack.IsPlaying then
             checkAnimationStopConditions(currentTarget)
         end
         
-        -- Main checks based on speed settings
         local checkInterval = settings.extremeFast and 0.01 or settings.checkSpeed
         
         if currentTime - lastCheck >= checkInterval then
             if not settings.extremeFast then
                 updateTarget()
             else
-                -- Extreme fast mode - skip some checks
                 local nearestTarget = findNearestTarget()
                 if nearestTarget ~= currentTarget then
                     if currentHighlight then
@@ -12457,7 +12592,6 @@ local function main()
                 end
             end
             
-            -- Weapon system
             if settings.weaponOutEnabled then
                 local shouldEquip = checkWeaponSystem()
                 if shouldEquip then
@@ -12467,9 +12601,21 @@ local function main()
             
             lastCheck = currentTime
         end
+        
+        if settings.autoMode and currentTarget then
+            if currentTime - lastAutoHit >= checkInterval then
+                if canHitTarget(currentTarget) then
+                    fireTargetRemote(currentTarget)
+                    
+                    if settings.doBlockAnimation then
+                        playBlockAnimation()
+                    end
+                end
+                lastAutoHit = currentTime
+            end
+        end
     end)
     
-    -- Handle respawn
     LocalPlayer.CharacterAdded:Connect(function()
         if currentHighlight then
             currentHighlight:Destroy()
@@ -12482,7 +12628,6 @@ local function main()
         LocalPlayer.Character:WaitForChild("HumanoidRootPart")
     end)
     
-    -- Clean up
     Players.PlayerRemoving:Connect(function(player)
         if currentTarget == player then
             if currentHighlight then
@@ -27477,6 +27622,7 @@ local ByNameTab = Window:MakeTab({
     Icon = "rbxassetid://18557173114",
     PremiumOnly = false
 })
+
 ByNameTab:AddTextbox({
     Name = "Name disable tool",
     Default = "",
