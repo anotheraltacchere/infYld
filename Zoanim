@@ -1,0 +1,2399 @@
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+
+local animationIds = {
+	["Facepalm"] = "rbxassetid://6747110329",
+	["Lean-Back"] = "rbxassetid://7234736609",
+	["Ledge-Sit"] = "rbxassetid://7055109566",
+	["Yakuza/Flailing-Arms"] = "rbxassetid://6818421387",
+	["Throw"] = "rbxassetid://15161462053",
+	["Punches"] = "rbxassetid://13452846777",
+	["Cool Slash"] = "rbxassetid://13452856736",
+	["Kanabo Flaunt Taunt"] = "rbxassetid://9003652864",
+	["Weapon Lick"] = "rbxassetid://13452940547",
+	["Weapon Throw"] = "rbxassetid://13452950106",
+	["Wave"] = "rbxassetid://128777973",
+	["Basic Weapon Spin"] = "rbxassetid://11326189863",
+	["Hit Down"] = "rbxassetid://9234350319",
+	["Kneel Pray"] = "rbxassetid://11812955950",
+	["Point"] = "rbxassetid://9013391552",
+	["Weapon Spinner"] = "rbxassetid://13452870518",
+	["Spin Once"] = "rbxassetid://11941379711",
+	["Cool Spin"] = "rbxassetid://11941371404",
+	["Call Weapon"] = "rbxassetid://13452884918",
+	["Weapon Stand"] = "rbxassetid://13452922479",
+}
+
+local guiState = {
+	posX = 10, posY = 10,
+	toggleBtnX = 458, toggleBtnY = -10,
+	toggleBtnLocked = false,
+	isMinimized = false,
+	forceAnimations = false,
+	sortEnabled = false,
+	globalLoop = false,
+	globalFreeze = false,
+	globalBlendTime = 0.1,
+	globalFadeTime = 0.1,
+	globalSpeed = 1,
+	guiWidth = 270,
+	guiHeight = 420,
+	activeTab = "All Anims",
+	activeSubTab = "Default",
+	btnTransparency = 0,
+	guiTransparency = 0,
+	toggleBtnTransparency = 0.5,
+}
+
+local customTabs = {}
+local favourites = {}
+local subTabs = {}
+local animOrder = {}
+local animPerTabOrder = {}
+local animSettings = {}
+local animations = {}
+local currentAnimator = nil
+local animationButtons = {}
+local currentDeleteTarget = nil
+local pausedAnimations = {}
+local searchQuery = ""
+
+local C = {
+	bg         = Color3.fromRGB(8, 8, 10),
+	titleBar   = Color3.fromRGB(14, 14, 16),
+	tabRow     = Color3.fromRGB(12, 12, 14),
+	row        = Color3.fromRGB(18, 18, 22),
+	rowAlt     = Color3.fromRGB(22, 22, 26),
+	expand     = Color3.fromRGB(10, 10, 12),
+	addArea    = Color3.fromRGB(14, 14, 16),
+	input      = Color3.fromRGB(26, 26, 32),
+	btnGray    = Color3.fromRGB(40, 40, 48),
+	btnGreen   = Color3.fromRGB(40, 180, 60),
+	btnRed     = Color3.fromRGB(190, 45, 45),
+	btnBlue    = Color3.fromRGB(60, 130, 240),
+	btnOrange  = Color3.fromRGB(190, 130, 25),
+	btnPurple  = Color3.fromRGB(100, 60, 200),
+	border     = Color3.fromRGB(35, 35, 45),
+	textPri    = Color3.fromRGB(230, 230, 235),
+	textSec    = Color3.fromRGB(150, 150, 165),
+	star       = Color3.fromRGB(255, 210, 50),
+	starOff    = Color3.fromRGB(75, 75, 90),
+	tabActive  = Color3.fromRGB(60, 130, 240),
+	subActive  = Color3.fromRGB(100, 60, 200),
+	dropdown   = Color3.fromRGB(16, 16, 22),
+	dropItem   = Color3.fromRGB(22, 22, 28),
+	dropHover  = Color3.fromRGB(34, 34, 44),
+	overlay    = Color3.fromRGB(14, 14, 18),
+	tabPicker  = Color3.fromRGB(18, 18, 24),
+	tabPickRow = Color3.fromRGB(28, 28, 36),
+	tabPickSub = Color3.fromRGB(22, 22, 30),
+	lockOn     = Color3.fromRGB(190, 45, 45),
+	lockOff    = Color3.fromRGB(40, 40, 48),
+}
+
+local function safeRead(path)
+	if isfile and readfile and isfile(path) then
+		local ok, r = pcall(readfile, path)
+		if ok then return r end
+	end
+	return nil
+end
+
+local function safeWrite(path, content)
+	if writefile then pcall(writefile, path, content) end
+end
+
+local function ensureFolder(path)
+	if isfolder and makefolder and not isfolder(path) then makefolder(path) end
+end
+
+local function getBase()
+	ensureFolder("workspace")
+	ensureFolder("workspace/Zo Anims")
+	return "workspace/Zo Anims"
+end
+
+local function saveAnimations()
+	local lines = {}
+	for name, id in pairs(animationIds) do
+		table.insert(lines, name .. "|" .. id)
+	end
+	safeWrite(getBase() .. "/Zo Anims.txt", table.concat(lines, "\n"))
+end
+
+local function loadAnimations()
+	local c = safeRead(getBase() .. "/Zo Anims.txt")
+	if c then
+		local loaded = {}
+		for line in c:gmatch("[^\r\n]+") do
+			local name, id = line:match("([^|]+)|(.+)")
+			if name and id then loaded[name] = id end
+		end
+		if next(loaded) then animationIds = loaded end
+	end
+end
+
+local function saveFavourites()
+	safeWrite(getBase() .. "/Favourites.txt", table.concat(favourites, "\n"))
+end
+
+local function loadFavourites()
+	local c = safeRead(getBase() .. "/Favourites.txt")
+	if c then
+		favourites = {}
+		for line in c:gmatch("[^\r\n]+") do
+			if line ~= "" then table.insert(favourites, line) end
+		end
+	end
+end
+
+local function saveCustomTabs()
+	local lines = {}
+	for _, tab in ipairs(customTabs) do
+		local subs = subTabs[tab] or {}
+		table.insert(lines, tab .. "|" .. table.concat(subs, ","))
+	end
+	safeWrite(getBase() .. "/CustomTabs.txt", table.concat(lines, "\n"))
+end
+
+local function loadCustomTabs()
+	local c = safeRead(getBase() .. "/CustomTabs.txt")
+	if c then
+		customTabs = {}
+		subTabs = {}
+		for line in c:gmatch("[^\r\n]+") do
+			local tabName, subsStr = line:match("([^|]+)|?(.*)")
+			if tabName and tabName ~= "" then
+				table.insert(customTabs, tabName)
+				subTabs[tabName] = {}
+				if subsStr and subsStr ~= "" then
+					for sub in subsStr:gmatch("[^,]+") do
+						table.insert(subTabs[tabName], sub)
+					end
+				end
+			end
+		end
+	end
+end
+
+local function saveAnimSettings()
+	local lines = {}
+	for name, s in pairs(animSettings) do
+		table.insert(lines, name.."|"..tostring(s.blendTime).."|"..tostring(s.fadeTime).."|"..tostring(s.speed).."|"..tostring(s.loop).."|"..tostring(s.freeze))
+	end
+	safeWrite(getBase() .. "/AnimSettings.txt", table.concat(lines, "\n"))
+end
+
+local function loadAnimSettings()
+	local c = safeRead(getBase() .. "/AnimSettings.txt")
+	if c then
+		for line in c:gmatch("[^\r\n]+") do
+			local name, bt, ft, sp, lp, fr = line:match("([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)")
+			if name then
+				animSettings[name] = {
+					blendTime = tonumber(bt) or 0.1,
+					fadeTime  = tonumber(ft) or 0.1,
+					speed     = tonumber(sp) or 1,
+					loop      = lp == "true",
+					freeze    = fr == "true",
+				}
+			end
+		end
+	end
+end
+
+local function saveGuiState()
+	local lines = {
+		"posX="                  .. tostring(guiState.posX),
+		"posY="                  .. tostring(guiState.posY),
+		"toggleBtnX="            .. tostring(guiState.toggleBtnX),
+		"toggleBtnY="            .. tostring(guiState.toggleBtnY),
+		"toggleBtnLocked="       .. tostring(guiState.toggleBtnLocked),
+		"guiWidth="              .. tostring(guiState.guiWidth),
+		"guiHeight="             .. tostring(guiState.guiHeight),
+		"globalBlendTime="       .. tostring(guiState.globalBlendTime),
+		"globalFadeTime="        .. tostring(guiState.globalFadeTime),
+		"globalSpeed="           .. tostring(guiState.globalSpeed),
+		"globalLoop="            .. tostring(guiState.globalLoop),
+		"globalFreeze="          .. tostring(guiState.globalFreeze),
+		"forceAnimations="       .. tostring(guiState.forceAnimations),
+		"btnTransparency="       .. tostring(guiState.btnTransparency),
+		"guiTransparency="       .. tostring(guiState.guiTransparency),
+		"toggleBtnTransparency=" .. tostring(guiState.toggleBtnTransparency),
+	}
+	safeWrite(getBase() .. "/GuiState.txt", table.concat(lines, "\n"))
+end
+
+local function loadGuiState()
+	local c = safeRead(getBase() .. "/GuiState.txt")
+	if c then
+		for line in c:gmatch("[^\r\n]+") do
+			local k, v = line:match("([^=]+)=(.+)")
+			if k and v then
+				if     k == "posX"                  then guiState.posX                  = tonumber(v) or 10
+				elseif k == "posY"                  then guiState.posY                  = tonumber(v) or 10
+				elseif k == "toggleBtnX"            then guiState.toggleBtnX            = tonumber(v) or 458
+				elseif k == "toggleBtnY"            then guiState.toggleBtnY            = tonumber(v) or -10
+				elseif k == "miniBtnX"              then guiState.toggleBtnX            = tonumber(v) or 458
+				elseif k == "miniBtnY"              then guiState.toggleBtnY            = tonumber(v) or -10
+				elseif k == "toggleBtnLocked"       then guiState.toggleBtnLocked       = v == "true"
+				elseif k == "guiWidth"              then guiState.guiWidth              = tonumber(v) or 270
+				elseif k == "guiHeight"             then guiState.guiHeight             = tonumber(v) or 420
+				elseif k == "globalBlendTime"       then guiState.globalBlendTime       = tonumber(v) or 0.1
+				elseif k == "globalFadeTime"        then guiState.globalFadeTime        = tonumber(v) or 0.1
+				elseif k == "globalSpeed"           then guiState.globalSpeed           = tonumber(v) or 1
+				elseif k == "globalLoop"            then guiState.globalLoop            = v == "true"
+				elseif k == "globalFreeze"          then guiState.globalFreeze          = v == "true"
+				elseif k == "forceAnimations"       then guiState.forceAnimations       = v == "true"
+				elseif k == "btnTransparency"       then guiState.btnTransparency       = tonumber(v) or 0
+				elseif k == "guiTransparency"       then guiState.guiTransparency       = tonumber(v) or 0
+				elseif k == "toggleBtnTransparency" then guiState.toggleBtnTransparency = tonumber(v) or 0.5
+				elseif k == "miniBtnTransparency"   then guiState.toggleBtnTransparency = tonumber(v) or 0.5
+				end
+			end
+		end
+	end
+end
+
+local function saveAnimOrder()
+	safeWrite(getBase() .. "/AnimOrder.txt", table.concat(animOrder, "\n"))
+end
+
+local function loadAnimOrder()
+	local c = safeRead(getBase() .. "/AnimOrder.txt")
+	if c then
+		animOrder = {}
+		for line in c:gmatch("[^\r\n]+") do
+			if line ~= "" then table.insert(animOrder, line) end
+		end
+	end
+end
+
+local function saveTabAnimOrder()
+	local lines = {}
+	for key, orderList in pairs(animPerTabOrder) do
+		table.insert(lines, key .. "|" .. table.concat(orderList, ","))
+	end
+	safeWrite(getBase() .. "/TabAnimOrder.txt", table.concat(lines, "\n"))
+end
+
+local function loadTabAnimOrder()
+	local c = safeRead(getBase() .. "/TabAnimOrder.txt")
+	if c then
+		animPerTabOrder = {}
+		for line in c:gmatch("[^\r\n]+") do
+			local key, rest = line:match("([^|]+)|?(.*)")
+			if key then
+				animPerTabOrder[key] = {}
+				if rest and rest ~= "" then
+					for item in rest:gmatch("[^,]+") do
+						table.insert(animPerTabOrder[key], item)
+					end
+				end
+			end
+		end
+	end
+end
+
+loadAnimations()
+loadFavourites()
+loadCustomTabs()
+loadAnimSettings()
+loadGuiState()
+loadAnimOrder()
+loadTabAnimOrder()
+
+local function ensureAnimSetting(name)
+	if not animSettings[name] then
+		animSettings[name] = {
+			blendTime = guiState.globalBlendTime,
+			fadeTime  = guiState.globalFadeTime,
+			speed     = guiState.globalSpeed,
+			loop      = false,
+			freeze    = false,
+		}
+	end
+end
+
+local function isFavourite(name)
+	for _, v in ipairs(favourites) do
+		if v == name then return true end
+	end
+	return false
+end
+
+local function addFavourite(name)
+	if not isFavourite(name) then
+		table.insert(favourites, name)
+		saveFavourites()
+	end
+end
+
+local function removeFavourite(name)
+	for i, v in ipairs(favourites) do
+		if v == name then
+			table.remove(favourites, i)
+			saveFavourites()
+			return
+		end
+	end
+end
+
+local function getTabKey(tab, sub)
+	return tab .. "::" .. (sub or "Default")
+end
+
+local function getAnimsForTab(tab, sub)
+	local result = {}
+	if tab == "All Anims" then
+		for _, name in ipairs(animOrder) do
+			if animationIds[name] then table.insert(result, name) end
+		end
+	elseif tab == "Favourites" then
+		for _, name in ipairs(favourites) do
+			if animationIds[name] then table.insert(result, name) end
+		end
+	else
+		local key = getTabKey(tab, sub)
+		local order = animPerTabOrder[key] or {}
+		for _, name in ipairs(order) do
+			if animationIds[name] then table.insert(result, name) end
+		end
+	end
+	return result
+end
+
+local function filterBySearch(list)
+	if searchQuery == "" then return list end
+	local q = searchQuery:lower()
+	local filtered = {}
+	for _, name in ipairs(list) do
+		local nameMatch = name:lower():find(q, 1, true)
+		local idMatch = animationIds[name] and animationIds[name]:lower():find(q, 1, true)
+		if nameMatch or idMatch then
+			table.insert(filtered, name)
+		end
+	end
+	return filtered
+end
+
+for name in pairs(animationIds) do
+	ensureAnimSetting(name)
+	local found = false
+	for _, n in ipairs(animOrder) do
+		if n == name then found = true break end
+	end
+	if not found then table.insert(animOrder, name) end
+end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "ZoAnimGui"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local toggleBtnContainer = Instance.new("Frame")
+toggleBtnContainer.Name = "ZoAnimToggleContainer"
+toggleBtnContainer.Size = UDim2.new(0, 86, 0, 26)
+toggleBtnContainer.Position = UDim2.new(0, guiState.toggleBtnX, 0, guiState.toggleBtnY)
+toggleBtnContainer.BackgroundTransparency = 1
+toggleBtnContainer.BorderSizePixel = 0
+toggleBtnContainer.ZIndex = 300
+toggleBtnContainer.Visible = true
+toggleBtnContainer.Parent = screenGui
+
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Name = "ZoAnimToggle"
+toggleBtn.Size = UDim2.new(0, 60, 1, 0)
+toggleBtn.Position = UDim2.new(0, 0, 0, 0)
+toggleBtn.BackgroundColor3 = C.btnGray
+toggleBtn.BackgroundTransparency = guiState.toggleBtnTransparency
+toggleBtn.Text = guiState.isMinimized and "Show" or "Hide"
+toggleBtn.TextSize = 11
+toggleBtn.TextColor3 = C.textPri
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.BorderSizePixel = 1
+toggleBtn.BorderColor3 = C.border
+toggleBtn.ZIndex = 301
+toggleBtn.Visible = true
+toggleBtn.Parent = toggleBtnContainer
+local toggleBtnCorner = Instance.new("UICorner")
+toggleBtnCorner.CornerRadius = UDim.new(0, 6)
+toggleBtnCorner.Parent = toggleBtn
+
+local lockBtn = Instance.new("TextButton")
+lockBtn.Name = "ZoAnimLock"
+lockBtn.Size = UDim2.new(0, 22, 1, 0)
+lockBtn.Position = UDim2.new(0, 63, 0, 0)
+lockBtn.BackgroundColor3 = guiState.toggleBtnLocked and C.lockOn or C.lockOff
+lockBtn.BackgroundTransparency = guiState.toggleBtnTransparency
+lockBtn.Text = guiState.toggleBtnLocked and "L" or "U"
+lockBtn.TextSize = 10
+lockBtn.TextColor3 = C.textPri
+lockBtn.Font = Enum.Font.GothamBold
+lockBtn.BorderSizePixel = 1
+lockBtn.BorderColor3 = C.border
+lockBtn.ZIndex = 301
+lockBtn.Visible = true
+lockBtn.Parent = toggleBtnContainer
+local lockBtnCorner = Instance.new("UICorner")
+lockBtnCorner.CornerRadius = UDim.new(0, 6)
+lockBtnCorner.Parent = lockBtn
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "ZoAnimMain"
+mainFrame.Size = UDim2.new(0, guiState.guiWidth, 0, guiState.guiHeight)
+mainFrame.Position = UDim2.new(0, guiState.posX, 0, guiState.posY)
+mainFrame.BackgroundColor3 = C.bg
+mainFrame.BackgroundTransparency = guiState.guiTransparency
+mainFrame.BorderSizePixel = 1
+mainFrame.BorderColor3 = C.border
+mainFrame.ClipsDescendants = false
+mainFrame.Visible = not guiState.isMinimized
+mainFrame.Parent = screenGui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 8)
+mainCorner.Parent = mainFrame
+
+local clipFrame = Instance.new("Frame")
+clipFrame.Name = "ClipFrame"
+clipFrame.Size = UDim2.new(1, 0, 1, 0)
+clipFrame.Position = UDim2.new(0, 0, 0, 0)
+clipFrame.BackgroundTransparency = 1
+clipFrame.BorderSizePixel = 0
+clipFrame.ClipsDescendants = true
+clipFrame.Parent = mainFrame
+
+local titleBar = Instance.new("Frame")
+titleBar.Name = "TitleBar"
+titleBar.Size = UDim2.new(1, 0, 0, 30)
+titleBar.Position = UDim2.new(0, 0, 0, 0)
+titleBar.BackgroundColor3 = C.titleBar
+titleBar.BackgroundTransparency = guiState.btnTransparency
+titleBar.BorderSizePixel = 0
+titleBar.Parent = clipFrame
+
+local titleBarCorner = Instance.new("UICorner")
+titleBarCorner.CornerRadius = UDim.new(0, 8)
+titleBarCorner.Parent = titleBar
+
+local titleBarFix = Instance.new("Frame")
+titleBarFix.Size = UDim2.new(1, 0, 0.5, 0)
+titleBarFix.Position = UDim2.new(0, 0, 0.5, 0)
+titleBarFix.BackgroundColor3 = C.titleBar
+titleBarFix.BackgroundTransparency = guiState.btnTransparency
+titleBarFix.BorderSizePixel = 0
+titleBarFix.Parent = titleBar
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(0, 52, 1, 0)
+titleLabel.Position = UDim2.new(0, 6, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "ZoAnim"
+titleLabel.TextSize = 12
+titleLabel.TextColor3 = C.textPri
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Parent = titleBar
+
+local searchBox = Instance.new("TextBox")
+searchBox.Size = UDim2.new(1, -110, 1, -8)
+searchBox.Position = UDim2.new(0, 60, 0, 4)
+searchBox.BackgroundColor3 = C.input
+searchBox.BackgroundTransparency = guiState.btnTransparency
+searchBox.BorderSizePixel = 0
+searchBox.PlaceholderText = "Search..."
+searchBox.Text = ""
+searchBox.TextSize = 10
+searchBox.TextColor3 = C.textPri
+searchBox.PlaceholderColor3 = C.textSec
+searchBox.Font = Enum.Font.Gotham
+searchBox.ClearTextOnFocus = false
+searchBox.Parent = titleBar
+
+local searchBoxCorner = Instance.new("UICorner")
+searchBoxCorner.CornerRadius = UDim.new(0, 4)
+searchBoxCorner.Parent = searchBox
+
+local viewBtn = Instance.new("TextButton")
+viewBtn.Size = UDim2.new(0, 42, 0, 20)
+viewBtn.Position = UDim2.new(1, -46, 0.5, -10)
+viewBtn.BackgroundColor3 = C.btnGray
+viewBtn.BackgroundTransparency = guiState.btnTransparency
+viewBtn.Text = "View"
+viewBtn.TextSize = 10
+viewBtn.TextColor3 = C.textPri
+viewBtn.Font = Enum.Font.GothamBold
+viewBtn.BorderSizePixel = 0
+viewBtn.Parent = titleBar
+
+local viewBtnCorner = Instance.new("UICorner")
+viewBtnCorner.CornerRadius = UDim.new(0, 4)
+viewBtnCorner.Parent = viewBtn
+
+local tabsRow = Instance.new("ScrollingFrame")
+tabsRow.Size = UDim2.new(1, 0, 0, 28)
+tabsRow.Position = UDim2.new(0, 0, 0, 30)
+tabsRow.CanvasSize = UDim2.new(0, 0, 0, 0)
+tabsRow.AutomaticCanvasSize = Enum.AutomaticSize.X
+tabsRow.ScrollBarThickness = 2
+tabsRow.ScrollingDirection = Enum.ScrollingDirection.X
+tabsRow.BackgroundColor3 = C.tabRow
+tabsRow.BackgroundTransparency = guiState.btnTransparency
+tabsRow.BorderSizePixel = 0
+tabsRow.Parent = clipFrame
+
+local tabsLayout = Instance.new("UIListLayout")
+tabsLayout.Parent = tabsRow
+tabsLayout.FillDirection = Enum.FillDirection.Horizontal
+tabsLayout.Padding = UDim.new(0, 3)
+tabsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local tabsPad = Instance.new("UIPadding")
+tabsPad.PaddingLeft = UDim.new(0, 3)
+tabsPad.PaddingTop = UDim.new(0, 3)
+tabsPad.Parent = tabsRow
+
+local subTabsRow = Instance.new("ScrollingFrame")
+subTabsRow.Size = UDim2.new(1, 0, 0, 24)
+subTabsRow.Position = UDim2.new(0, 0, 0, 58)
+subTabsRow.CanvasSize = UDim2.new(0, 0, 0, 0)
+subTabsRow.AutomaticCanvasSize = Enum.AutomaticSize.X
+subTabsRow.ScrollBarThickness = 2
+subTabsRow.ScrollingDirection = Enum.ScrollingDirection.X
+subTabsRow.BackgroundColor3 = Color3.fromRGB(8, 8, 10)
+subTabsRow.BackgroundTransparency = guiState.btnTransparency
+subTabsRow.BorderSizePixel = 0
+subTabsRow.Visible = false
+subTabsRow.Parent = clipFrame
+
+local subTabsLayout = Instance.new("UIListLayout")
+subTabsLayout.Parent = subTabsRow
+subTabsLayout.FillDirection = Enum.FillDirection.Horizontal
+subTabsLayout.Padding = UDim.new(0, 3)
+subTabsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local subTabsPad = Instance.new("UIPadding")
+subTabsPad.PaddingLeft = UDim.new(0, 3)
+subTabsPad.PaddingTop = UDim.new(0, 3)
+subTabsPad.Parent = subTabsRow
+
+local contentArea = Instance.new("Frame")
+contentArea.Size = UDim2.new(1, 0, 0, guiState.guiHeight - 58)
+contentArea.Position = UDim2.new(0, 0, 0, 58)
+contentArea.BackgroundTransparency = 1
+contentArea.BorderSizePixel = 0
+contentArea.Parent = clipFrame
+
+local animScrollFrame = Instance.new("ScrollingFrame")
+animScrollFrame.Size = UDim2.new(1, 0, 1, -68)
+animScrollFrame.Position = UDim2.new(0, 0, 0, 0)
+animScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+animScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+animScrollFrame.ScrollBarThickness = 4
+animScrollFrame.BackgroundColor3 = C.bg
+animScrollFrame.BackgroundTransparency = guiState.btnTransparency
+animScrollFrame.BorderSizePixel = 0
+animScrollFrame.Parent = contentArea
+
+local animLayout = Instance.new("UIListLayout")
+animLayout.Parent = animScrollFrame
+animLayout.Padding = UDim.new(0, 3)
+animLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local animPad = Instance.new("UIPadding")
+animPad.PaddingTop = UDim.new(0, 4)
+animPad.PaddingLeft = UDim.new(0, 4)
+animPad.PaddingRight = UDim.new(0, 4)
+animPad.PaddingBottom = UDim.new(0, 4)
+animPad.Parent = animScrollFrame
+
+local addAnimArea = Instance.new("Frame")
+addAnimArea.Size = UDim2.new(1, 0, 0, 68)
+addAnimArea.Position = UDim2.new(0, 0, 1, -68)
+addAnimArea.BackgroundColor3 = C.addArea
+addAnimArea.BackgroundTransparency = guiState.btnTransparency
+addAnimArea.BorderSizePixel = 0
+addAnimArea.Parent = contentArea
+
+local addAreaTopLine = Instance.new("Frame")
+addAreaTopLine.Size = UDim2.new(1, 0, 0, 1)
+addAreaTopLine.BackgroundColor3 = C.border
+addAreaTopLine.BorderSizePixel = 0
+addAreaTopLine.Parent = addAnimArea
+
+local addAnimNameBox = Instance.new("TextBox")
+addAnimNameBox.Size = UDim2.new(0.47, -4, 0, 26)
+addAnimNameBox.Position = UDim2.new(0, 6, 0, 6)
+addAnimNameBox.BackgroundColor3 = C.input
+addAnimNameBox.BackgroundTransparency = guiState.btnTransparency
+addAnimNameBox.BorderSizePixel = 0
+addAnimNameBox.PlaceholderText = "Anim Name"
+addAnimNameBox.Text = ""
+addAnimNameBox.TextSize = 10
+addAnimNameBox.TextColor3 = C.textPri
+addAnimNameBox.PlaceholderColor3 = C.textSec
+addAnimNameBox.Font = Enum.Font.Gotham
+addAnimNameBox.ClearTextOnFocus = false
+addAnimNameBox.Parent = addAnimArea
+
+local aanbc = Instance.new("UICorner")
+aanbc.CornerRadius = UDim.new(0, 4)
+aanbc.Parent = addAnimNameBox
+
+local addAnimIdBox = Instance.new("TextBox")
+addAnimIdBox.Size = UDim2.new(0.47, -4, 0, 26)
+addAnimIdBox.Position = UDim2.new(0.5, 2, 0, 6)
+addAnimIdBox.BackgroundColor3 = C.input
+addAnimIdBox.BackgroundTransparency = guiState.btnTransparency
+addAnimIdBox.BorderSizePixel = 0
+addAnimIdBox.PlaceholderText = "Asset ID"
+addAnimIdBox.Text = ""
+addAnimIdBox.TextSize = 10
+addAnimIdBox.TextColor3 = C.textPri
+addAnimIdBox.PlaceholderColor3 = C.textSec
+addAnimIdBox.Font = Enum.Font.Gotham
+addAnimIdBox.ClearTextOnFocus = false
+addAnimIdBox.Parent = addAnimArea
+
+local aaibc = Instance.new("UICorner")
+aaibc.CornerRadius = UDim.new(0, 4)
+aaibc.Parent = addAnimIdBox
+
+local addAnimBtn = Instance.new("TextButton")
+addAnimBtn.Size = UDim2.new(1, -12, 0, 26)
+addAnimBtn.Position = UDim2.new(0, 6, 0, 36)
+addAnimBtn.BackgroundColor3 = C.btnBlue
+addAnimBtn.BackgroundTransparency = guiState.btnTransparency
+addAnimBtn.Text = "+ Add Animation"
+addAnimBtn.TextSize = 11
+addAnimBtn.TextColor3 = C.textPri
+addAnimBtn.Font = Enum.Font.GothamBold
+addAnimBtn.BorderSizePixel = 0
+addAnimBtn.Parent = addAnimArea
+
+local aabtnc = Instance.new("UICorner")
+aabtnc.CornerRadius = UDim.new(0, 4)
+aabtnc.Parent = addAnimBtn
+
+local dropdownFrame = Instance.new("Frame")
+dropdownFrame.Name = "ZoAnimDropdown"
+dropdownFrame.Size = UDim2.new(0, 172, 0, 0)
+dropdownFrame.BackgroundColor3 = C.dropdown
+dropdownFrame.BorderSizePixel = 1
+dropdownFrame.BorderColor3 = C.border
+dropdownFrame.ClipsDescendants = true
+dropdownFrame.Visible = false
+dropdownFrame.ZIndex = 200
+dropdownFrame.Parent = screenGui
+
+local dropdownCorner = Instance.new("UICorner")
+dropdownCorner.CornerRadius = UDim.new(0, 6)
+dropdownCorner.Parent = dropdownFrame
+
+local dropdownLayout = Instance.new("UIListLayout")
+dropdownLayout.Parent = dropdownFrame
+dropdownLayout.Padding = UDim.new(0, 0)
+dropdownLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local ITEM_H = 28
+local TOTAL_ITEMS = 7
+local TOTAL_SEPS = 1
+local DROPDOWN_H = TOTAL_ITEMS * ITEM_H + TOTAL_SEPS * 1
+
+local function makeDropItem(txt, order)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, 0, 0, ITEM_H)
+	btn.BackgroundColor3 = C.dropItem
+	btn.Text = txt
+	btn.TextSize = 11
+	btn.TextColor3 = C.textPri
+	btn.Font = Enum.Font.Gotham
+	btn.TextXAlignment = Enum.TextXAlignment.Left
+	btn.LayoutOrder = order
+	btn.ZIndex = 201
+	btn.BorderSizePixel = 0
+	btn.Parent = dropdownFrame
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft = UDim.new(0, 10)
+	pad.Parent = btn
+	btn.MouseEnter:Connect(function() btn.BackgroundColor3 = C.dropHover end)
+	btn.MouseLeave:Connect(function() btn.BackgroundColor3 = C.dropItem end)
+	return btn
+end
+
+local function makeDropSep(order)
+	local sep = Instance.new("Frame")
+	sep.Size = UDim2.new(1, 0, 0, 1)
+	sep.BackgroundColor3 = C.border
+	sep.BorderSizePixel = 0
+	sep.LayoutOrder = order
+	sep.ZIndex = 201
+	sep.Parent = dropdownFrame
+end
+
+local dropLoop     = makeDropItem("", 1)
+local dropFreeze   = makeDropItem("", 2)
+local dropSort     = makeDropItem("", 3)
+local dropForce    = makeDropItem("", 4)
+makeDropSep(5)
+local dropSettings = makeDropItem("Settings", 6)
+local dropNewTab   = makeDropItem("+ New Tab", 7)
+
+local dropdownOpen = false
+
+local function updateDropLabels()
+	dropLoop.Text   = (guiState.globalLoop      and "[ON] " or "[OFF] ") .. "Loop"
+	dropFreeze.Text = (guiState.globalFreeze    and "[ON] " or "[OFF] ") .. "Freeze"
+	dropSort.Text   = (guiState.sortEnabled     and "[ON] " or "[OFF] ") .. "Sort Mode"
+	dropForce.Text  = (guiState.forceAnimations and "[ON] " or "[OFF] ") .. "Force Anims"
+end
+updateDropLabels()
+
+local function repositionDropdown()
+	local ap = mainFrame.AbsolutePosition
+	local as = mainFrame.AbsoluteSize
+	local ddW = 172
+	local ddX = ap.X + as.X - ddW - 2
+	local ddY = ap.Y + 30
+	dropdownFrame.Position = UDim2.new(0, ddX, 0, ddY)
+	dropdownFrame.Size = UDim2.new(0, ddW, 0, DROPDOWN_H)
+end
+
+local function openDropdown()
+	repositionDropdown()
+	dropdownFrame.Visible = true
+	dropdownOpen = true
+end
+
+local function closeDropdown()
+	dropdownFrame.Visible = false
+	dropdownOpen = false
+end
+
+viewBtn.MouseButton1Click:Connect(function()
+	if dropdownOpen then closeDropdown() else openDropdown() end
+end)
+
+local settingsPanel = Instance.new("Frame")
+settingsPanel.Name = "ZoAnimSettings"
+settingsPanel.BackgroundColor3 = C.bg
+settingsPanel.BorderSizePixel = 1
+settingsPanel.BorderColor3 = C.border
+settingsPanel.Visible = false
+settingsPanel.ZIndex = 150
+settingsPanel.Parent = screenGui
+
+local settingsPanelCorner = Instance.new("UICorner")
+settingsPanelCorner.CornerRadius = UDim.new(0, 8)
+settingsPanelCorner.Parent = settingsPanel
+
+local settingsScroll = Instance.new("ScrollingFrame")
+settingsScroll.Size = UDim2.new(1, 0, 1, 0)
+settingsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+settingsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+settingsScroll.ScrollBarThickness = 4
+settingsScroll.BackgroundTransparency = 1
+settingsScroll.BorderSizePixel = 0
+settingsScroll.ZIndex = 151
+settingsScroll.Parent = settingsPanel
+
+local settingsLayout = Instance.new("UIListLayout")
+settingsLayout.Parent = settingsScroll
+settingsLayout.Padding = UDim.new(0, 5)
+settingsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local settingsPad = Instance.new("UIPadding")
+settingsPad.PaddingTop = UDim.new(0, 8)
+settingsPad.PaddingLeft = UDim.new(0, 8)
+settingsPad.PaddingRight = UDim.new(0, 8)
+settingsPad.PaddingBottom = UDim.new(0, 8)
+settingsPad.Parent = settingsScroll
+
+local function makeSettingRow(labelTxt, defaultVal, order)
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(1, 0, 0, 30)
+	row.BackgroundColor3 = C.row
+	row.BorderSizePixel = 0
+	row.LayoutOrder = order
+	row.ZIndex = 152
+	row.Parent = settingsScroll
+	local rc = Instance.new("UICorner")
+	rc.CornerRadius = UDim.new(0, 5)
+	rc.Parent = row
+	local lbl = Instance.new("TextLabel")
+	lbl.Size = UDim2.new(0.55, 0, 1, 0)
+	lbl.Position = UDim2.new(0, 8, 0, 0)
+	lbl.BackgroundTransparency = 1
+	lbl.Text = labelTxt
+	lbl.TextSize = 11
+	lbl.TextColor3 = C.textPri
+	lbl.Font = Enum.Font.Gotham
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	lbl.ZIndex = 153
+	lbl.Parent = row
+	local box = Instance.new("TextBox")
+	box.Size = UDim2.new(0.4, -4, 0, 22)
+	box.Position = UDim2.new(0.58, 0, 0.5, -11)
+	box.BackgroundColor3 = C.input
+	box.BorderSizePixel = 0
+	box.Text = tostring(defaultVal)
+	box.TextSize = 11
+	box.TextColor3 = C.textPri
+	box.Font = Enum.Font.Gotham
+	box.ClearTextOnFocus = false
+	box.ZIndex = 153
+	box.Parent = row
+	local bc = Instance.new("UICorner")
+	bc.CornerRadius = UDim.new(0, 4)
+	bc.Parent = box
+	return box
+end
+
+local settingsTitleLbl = Instance.new("TextLabel")
+settingsTitleLbl.Size = UDim2.new(1, 0, 0, 24)
+settingsTitleLbl.BackgroundTransparency = 1
+settingsTitleLbl.Text = "Global Settings"
+settingsTitleLbl.TextSize = 13
+settingsTitleLbl.TextColor3 = C.textPri
+settingsTitleLbl.Font = Enum.Font.GothamBold
+settingsTitleLbl.LayoutOrder = 0
+settingsTitleLbl.ZIndex = 152
+settingsTitleLbl.Parent = settingsScroll
+
+local sBlendBox          = makeSettingRow("Blend Time",          guiState.globalBlendTime,       1)
+local sFadeBox           = makeSettingRow("Fade Time",           guiState.globalFadeTime,        2)
+local sSpeedBox          = makeSettingRow("Play Speed",          guiState.globalSpeed,           3)
+local sWidthBox          = makeSettingRow("GUI Width",           guiState.guiWidth,              4)
+local sHeightBox         = makeSettingRow("GUI Height",          guiState.guiHeight,             5)
+local sBtnTransBox       = makeSettingRow("UI Transparency",     guiState.btnTransparency,       6)
+local sGuiTransBox       = makeSettingRow("Window Transparency", guiState.guiTransparency,       7)
+local sToggleBtnTransBox = makeSettingRow("Toggle Btn Trans",    guiState.toggleBtnTransparency, 8)
+
+local settingsApplyBtn = Instance.new("TextButton")
+settingsApplyBtn.Size = UDim2.new(1, 0, 0, 30)
+settingsApplyBtn.BackgroundColor3 = C.btnBlue
+settingsApplyBtn.Text = "Apply"
+settingsApplyBtn.TextSize = 12
+settingsApplyBtn.TextColor3 = C.textPri
+settingsApplyBtn.Font = Enum.Font.GothamBold
+settingsApplyBtn.LayoutOrder = 9
+settingsApplyBtn.ZIndex = 152
+settingsApplyBtn.BorderSizePixel = 0
+settingsApplyBtn.Parent = settingsScroll
+local sacorner = Instance.new("UICorner")
+sacorner.CornerRadius = UDim.new(0, 5)
+sacorner.Parent = settingsApplyBtn
+
+local settingsBackBtn = Instance.new("TextButton")
+settingsBackBtn.Size = UDim2.new(1, 0, 0, 28)
+settingsBackBtn.BackgroundColor3 = C.btnGray
+settingsBackBtn.Text = "Back"
+settingsBackBtn.TextSize = 11
+settingsBackBtn.TextColor3 = C.textPri
+settingsBackBtn.Font = Enum.Font.GothamBold
+settingsBackBtn.LayoutOrder = 10
+settingsBackBtn.ZIndex = 152
+settingsBackBtn.BorderSizePixel = 0
+settingsBackBtn.Parent = settingsScroll
+local sbcorner = Instance.new("UICorner")
+sbcorner.CornerRadius = UDim.new(0, 5)
+sbcorner.Parent = settingsBackBtn
+
+local function applyAllUITransparency(t)
+	titleBar.BackgroundTransparency = t
+	titleBarFix.BackgroundTransparency = t
+	searchBox.BackgroundTransparency = t
+	viewBtn.BackgroundTransparency = t
+	tabsRow.BackgroundTransparency = t
+	subTabsRow.BackgroundTransparency = t
+	animScrollFrame.BackgroundTransparency = t
+	addAnimArea.BackgroundTransparency = t
+	addAnimNameBox.BackgroundTransparency = t
+	addAnimIdBox.BackgroundTransparency = t
+	addAnimBtn.BackgroundTransparency = t
+	for _, child in ipairs(animScrollFrame:GetChildren()) do
+		if child:IsA("Frame") then
+			child.BackgroundTransparency = t
+			for _, sub in ipairs(child:GetChildren()) do
+				if sub.Name == "favBtn" then
+					sub.BackgroundTransparency = 1
+				elseif sub:IsA("TextButton") or sub:IsA("TextBox") then
+					pcall(function() sub.BackgroundTransparency = t end)
+				elseif sub:IsA("Frame") then
+					pcall(function() sub.BackgroundTransparency = t end)
+					for _, deep in ipairs(sub:GetChildren()) do
+						if deep.Name == "favBtn" then
+							deep.BackgroundTransparency = 1
+						elseif deep:IsA("TextButton") or deep:IsA("TextBox") then
+							pcall(function() deep.BackgroundTransparency = t end)
+						end
+					end
+				end
+			end
+		end
+	end
+	for _, child in ipairs(tabsRow:GetChildren()) do
+		if child:IsA("Frame") then
+			for _, sub in ipairs(child:GetChildren()) do
+				if sub:IsA("TextButton") then
+					pcall(function() sub.BackgroundTransparency = t end)
+				end
+			end
+		end
+	end
+	for _, child in ipairs(subTabsRow:GetChildren()) do
+		if child:IsA("Frame") then
+			for _, sub in ipairs(child:GetChildren()) do
+				if sub:IsA("TextButton") then
+					pcall(function() sub.BackgroundTransparency = t end)
+				end
+			end
+		end
+	end
+end
+
+local rebuildAnimList
+local rebuildTabs
+
+local function setHidden(hidden)
+	guiState.isMinimized = hidden
+	mainFrame.Visible = not hidden
+	toggleBtnContainer.Visible = true
+	toggleBtn.Text = hidden and "Show" or "Hide"
+	if dropdownOpen and hidden then closeDropdown() end
+end
+
+toggleBtn.MouseButton1Click:Connect(function()
+	setHidden(not guiState.isMinimized)
+end)
+
+lockBtn.MouseButton1Click:Connect(function()
+	guiState.toggleBtnLocked = not guiState.toggleBtnLocked
+	lockBtn.Text = guiState.toggleBtnLocked and "L" or "U"
+	lockBtn.BackgroundColor3 = guiState.toggleBtnLocked and C.lockOn or C.lockOff
+	saveGuiState()
+end)
+
+local function openSettingsPanel()
+	local ap = mainFrame.AbsolutePosition
+	local as = mainFrame.AbsoluteSize
+	settingsPanel.Size = UDim2.new(0, as.X, 0, as.Y)
+	settingsPanel.Position = UDim2.new(0, ap.X, 0, ap.Y)
+	sBlendBox.Text          = tostring(guiState.globalBlendTime)
+	sFadeBox.Text           = tostring(guiState.globalFadeTime)
+	sSpeedBox.Text          = tostring(guiState.globalSpeed)
+	sWidthBox.Text          = tostring(guiState.guiWidth)
+	sHeightBox.Text         = tostring(guiState.guiHeight)
+	sBtnTransBox.Text       = tostring(guiState.btnTransparency)
+	sGuiTransBox.Text       = tostring(guiState.guiTransparency)
+	sToggleBtnTransBox.Text = tostring(guiState.toggleBtnTransparency)
+	settingsPanel.Visible = true
+end
+
+settingsBackBtn.MouseButton1Click:Connect(function()
+	settingsPanel.Visible = false
+end)
+
+settingsApplyBtn.MouseButton1Click:Connect(function()
+	local bt   = tonumber(sBlendBox.Text)
+	local ft   = tonumber(sFadeBox.Text)
+	local sp   = tonumber(sSpeedBox.Text)
+	local gw   = tonumber(sWidthBox.Text)
+	local gh   = tonumber(sHeightBox.Text)
+	local btr  = tonumber(sBtnTransBox.Text)
+	local gtr  = tonumber(sGuiTransBox.Text)
+	local tbtr = tonumber(sToggleBtnTransBox.Text)
+	if bt then guiState.globalBlendTime = bt end
+	if ft then guiState.globalFadeTime  = ft end
+	if sp then guiState.globalSpeed     = sp end
+	if gw and gw >= 180 and gw <= 700 then
+		guiState.guiWidth = gw
+		mainFrame.Size = UDim2.new(0, guiState.guiWidth, 0, guiState.guiHeight)
+	end
+	if gh and gh >= 200 and gh <= 900 then
+		guiState.guiHeight = gh
+		mainFrame.Size = UDim2.new(0, guiState.guiWidth, 0, guiState.guiHeight)
+	end
+	if btr then
+		btr = math.clamp(btr, 0, 0.95)
+		guiState.btnTransparency = btr
+		applyAllUITransparency(btr)
+	end
+	if gtr then
+		gtr = math.clamp(gtr, 0, 0.95)
+		guiState.guiTransparency = gtr
+		mainFrame.BackgroundTransparency = gtr
+	end
+	if tbtr then
+		tbtr = math.clamp(tbtr, 0, 1)
+		guiState.toggleBtnTransparency = tbtr
+		toggleBtn.BackgroundTransparency = tbtr
+		lockBtn.BackgroundTransparency = tbtr
+	end
+	saveGuiState()
+	settingsPanel.Visible = false
+end)
+
+dropSettings.MouseButton1Click:Connect(function()
+	closeDropdown()
+	openSettingsPanel()
+end)
+
+local function makeDraggable(handle, target, onEnd, lockedFn)
+	local dragging = false
+	local dragStart = Vector3.new()
+	local startPos = UDim2.new()
+
+	handle.InputBegan:Connect(function(input)
+		if lockedFn and lockedFn() then return end
+		if input.UserInputType == Enum.UserInputType.Touch
+			or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			dragStart = input.Position
+			startPos = target.Position
+		end
+	end)
+
+	UIS.InputChanged:Connect(function(input)
+		if not dragging then return end
+		if input.UserInputType == Enum.UserInputType.Touch
+			or input.UserInputType == Enum.UserInputType.MouseMovement then
+			local delta = input.Position - dragStart
+			local newX = startPos.X.Offset + delta.X
+			local newY = startPos.Y.Offset + delta.Y
+			target.Position = UDim2.new(0, newX, 0, newY)
+		end
+	end)
+
+	UIS.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch
+			or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			if dragging then
+				dragging = false
+				if onEnd then onEnd() end
+			end
+		end
+	end)
+end
+
+makeDraggable(titleBar, mainFrame, function()
+	guiState.posX = mainFrame.Position.X.Offset
+	guiState.posY = mainFrame.Position.Y.Offset
+	saveGuiState()
+	if dropdownOpen then repositionDropdown() end
+end, nil)
+
+makeDraggable(toggleBtn, toggleBtnContainer, function()
+	guiState.toggleBtnX = toggleBtnContainer.Position.X.Offset
+	guiState.toggleBtnY = toggleBtnContainer.Position.Y.Offset
+	saveGuiState()
+end, function() return guiState.toggleBtnLocked end)
+
+local function makeFloatingPanel(w, h)
+	local panel = Instance.new("Frame")
+	panel.Size = UDim2.new(0, w, 0, h)
+	panel.BackgroundColor3 = C.overlay
+	panel.BorderSizePixel = 1
+	panel.BorderColor3 = C.border
+	panel.Visible = false
+	panel.ZIndex = 180
+	panel.Parent = screenGui
+	local pc = Instance.new("UICorner")
+	pc.CornerRadius = UDim.new(0, 7)
+	pc.Parent = panel
+	return panel
+end
+
+local function centerPanel(panel)
+	local vp = workspace.CurrentCamera.ViewportSize
+	local sz = panel.AbsoluteSize
+	panel.Position = UDim2.new(0, math.floor(vp.X/2 - sz.X/2), 0, math.floor(vp.Y/2 - sz.Y/2))
+end
+
+local newTabPanel = makeFloatingPanel(220, 82)
+
+local ntTitleLbl = Instance.new("TextLabel")
+ntTitleLbl.Size = UDim2.new(1, -10, 0, 20)
+ntTitleLbl.Position = UDim2.new(0, 8, 0, 4)
+ntTitleLbl.BackgroundTransparency = 1
+ntTitleLbl.Text = "New Tab Name:"
+ntTitleLbl.TextSize = 11
+ntTitleLbl.TextColor3 = C.textPri
+ntTitleLbl.Font = Enum.Font.GothamBold
+ntTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+ntTitleLbl.ZIndex = 181
+ntTitleLbl.Parent = newTabPanel
+
+local newTabBox = Instance.new("TextBox")
+newTabBox.Size = UDim2.new(1, -16, 0, 24)
+newTabBox.Position = UDim2.new(0, 8, 0, 26)
+newTabBox.BackgroundColor3 = C.input
+newTabBox.BorderSizePixel = 0
+newTabBox.PlaceholderText = "Tab name..."
+newTabBox.Text = ""
+newTabBox.TextSize = 11
+newTabBox.TextColor3 = C.textPri
+newTabBox.PlaceholderColor3 = C.textSec
+newTabBox.Font = Enum.Font.Gotham
+newTabBox.ClearTextOnFocus = false
+newTabBox.ZIndex = 181
+newTabBox.Parent = newTabPanel
+local ntbc = Instance.new("UICorner")
+ntbc.CornerRadius = UDim.new(0, 4)
+ntbc.Parent = newTabBox
+
+local newTabConfirm = Instance.new("TextButton")
+newTabConfirm.Size = UDim2.new(0.47, -4, 0, 22)
+newTabConfirm.Position = UDim2.new(0, 8, 0, 54)
+newTabConfirm.BackgroundColor3 = C.btnBlue
+newTabConfirm.Text = "Create"
+newTabConfirm.TextSize = 11
+newTabConfirm.TextColor3 = C.textPri
+newTabConfirm.Font = Enum.Font.GothamBold
+newTabConfirm.ZIndex = 181
+newTabConfirm.BorderSizePixel = 0
+newTabConfirm.Parent = newTabPanel
+local ntcc = Instance.new("UICorner")
+ntcc.CornerRadius = UDim.new(0, 4)
+ntcc.Parent = newTabConfirm
+
+local newTabCancel = Instance.new("TextButton")
+newTabCancel.Size = UDim2.new(0.47, -4, 0, 22)
+newTabCancel.Position = UDim2.new(0.53, 0, 0, 54)
+newTabCancel.BackgroundColor3 = C.btnGray
+newTabCancel.Text = "Cancel"
+newTabCancel.TextSize = 11
+newTabCancel.TextColor3 = C.textPri
+newTabCancel.Font = Enum.Font.GothamBold
+newTabCancel.ZIndex = 181
+newTabCancel.BorderSizePixel = 0
+newTabCancel.Parent = newTabPanel
+local ntcanc = Instance.new("UICorner")
+ntcanc.CornerRadius = UDim.new(0, 4)
+ntcanc.Parent = newTabCancel
+
+local newSubTabPanel = makeFloatingPanel(220, 82)
+
+local nstTitleLbl = Instance.new("TextLabel")
+nstTitleLbl.Size = UDim2.new(1, -10, 0, 20)
+nstTitleLbl.Position = UDim2.new(0, 8, 0, 4)
+nstTitleLbl.BackgroundTransparency = 1
+nstTitleLbl.Text = "New Sub-Tab:"
+nstTitleLbl.TextSize = 11
+nstTitleLbl.TextColor3 = C.textPri
+nstTitleLbl.Font = Enum.Font.GothamBold
+nstTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+nstTitleLbl.ZIndex = 181
+nstTitleLbl.Parent = newSubTabPanel
+
+local newSubTabBox = Instance.new("TextBox")
+newSubTabBox.Size = UDim2.new(1, -16, 0, 24)
+newSubTabBox.Position = UDim2.new(0, 8, 0, 26)
+newSubTabBox.BackgroundColor3 = C.input
+newSubTabBox.BorderSizePixel = 0
+newSubTabBox.PlaceholderText = "Sub-tab name..."
+newSubTabBox.Text = ""
+newSubTabBox.TextSize = 11
+newSubTabBox.TextColor3 = C.textPri
+newSubTabBox.PlaceholderColor3 = C.textSec
+newSubTabBox.Font = Enum.Font.Gotham
+newSubTabBox.ClearTextOnFocus = false
+newSubTabBox.ZIndex = 181
+newSubTabBox.Parent = newSubTabPanel
+local nstbc = Instance.new("UICorner")
+nstbc.CornerRadius = UDim.new(0, 4)
+nstbc.Parent = newSubTabBox
+
+local newSubTabConfirm = Instance.new("TextButton")
+newSubTabConfirm.Size = UDim2.new(0.47, -4, 0, 22)
+newSubTabConfirm.Position = UDim2.new(0, 8, 0, 54)
+newSubTabConfirm.BackgroundColor3 = C.btnBlue
+newSubTabConfirm.Text = "Create"
+newSubTabConfirm.TextSize = 11
+newSubTabConfirm.TextColor3 = C.textPri
+newSubTabConfirm.Font = Enum.Font.GothamBold
+newSubTabConfirm.ZIndex = 181
+newSubTabConfirm.BorderSizePixel = 0
+newSubTabConfirm.Parent = newSubTabPanel
+local nstcc = Instance.new("UICorner")
+nstcc.CornerRadius = UDim.new(0, 4)
+nstcc.Parent = newSubTabConfirm
+
+local newSubTabCancel = Instance.new("TextButton")
+newSubTabCancel.Size = UDim2.new(0.47, -4, 0, 22)
+newSubTabCancel.Position = UDim2.new(0.53, 0, 0, 54)
+newSubTabCancel.BackgroundColor3 = C.btnGray
+newSubTabCancel.Text = "Cancel"
+newSubTabCancel.TextSize = 11
+newSubTabCancel.TextColor3 = C.textPri
+newSubTabCancel.Font = Enum.Font.GothamBold
+newSubTabCancel.ZIndex = 181
+newSubTabCancel.BorderSizePixel = 0
+newSubTabCancel.Parent = newSubTabPanel
+local nstcanc = Instance.new("UICorner")
+nstcanc.CornerRadius = UDim.new(0, 4)
+nstcanc.Parent = newSubTabCancel
+
+local tabPickerPanel = Instance.new("Frame")
+tabPickerPanel.Name = "ZoAnimTabPicker"
+tabPickerPanel.Size = UDim2.new(0, 200, 0, 220)
+tabPickerPanel.BackgroundColor3 = C.tabPicker
+tabPickerPanel.BorderSizePixel = 1
+tabPickerPanel.BorderColor3 = C.border
+tabPickerPanel.Visible = false
+tabPickerPanel.ZIndex = 190
+tabPickerPanel.Parent = screenGui
+local tppc = Instance.new("UICorner")
+tppc.CornerRadius = UDim.new(0, 7)
+tppc.Parent = tabPickerPanel
+
+local tabPickerTitle = Instance.new("TextLabel")
+tabPickerTitle.Size = UDim2.new(1, -36, 0, 24)
+tabPickerTitle.Position = UDim2.new(0, 8, 0, 4)
+tabPickerTitle.BackgroundTransparency = 1
+tabPickerTitle.Text = "Add to Tab / Sub-Tab"
+tabPickerTitle.TextSize = 10
+tabPickerTitle.TextColor3 = C.textPri
+tabPickerTitle.Font = Enum.Font.GothamBold
+tabPickerTitle.TextXAlignment = Enum.TextXAlignment.Left
+tabPickerTitle.ZIndex = 191
+tabPickerTitle.Parent = tabPickerPanel
+
+local tabPickerClose = Instance.new("TextButton")
+tabPickerClose.Size = UDim2.new(0, 24, 0, 20)
+tabPickerClose.Position = UDim2.new(1, -28, 0, 4)
+tabPickerClose.BackgroundColor3 = C.btnRed
+tabPickerClose.Text = "x"
+tabPickerClose.TextSize = 10
+tabPickerClose.TextColor3 = C.textPri
+tabPickerClose.Font = Enum.Font.GothamBold
+tabPickerClose.ZIndex = 191
+tabPickerClose.BorderSizePixel = 0
+tabPickerClose.Parent = tabPickerPanel
+local tpclosec = Instance.new("UICorner")
+tpclosec.CornerRadius = UDim.new(0, 4)
+tpclosec.Parent = tabPickerClose
+
+tabPickerClose.MouseButton1Click:Connect(function()
+	tabPickerPanel.Visible = false
+end)
+
+local tabPickerScroll = Instance.new("ScrollingFrame")
+tabPickerScroll.Size = UDim2.new(1, -8, 1, -32)
+tabPickerScroll.Position = UDim2.new(0, 4, 0, 30)
+tabPickerScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+tabPickerScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+tabPickerScroll.ScrollBarThickness = 3
+tabPickerScroll.BackgroundTransparency = 1
+tabPickerScroll.BorderSizePixel = 0
+tabPickerScroll.ZIndex = 191
+tabPickerScroll.Parent = tabPickerPanel
+
+local tabPickerLayout = Instance.new("UIListLayout")
+tabPickerLayout.Parent = tabPickerScroll
+tabPickerLayout.Padding = UDim.new(0, 2)
+tabPickerLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local function openTabPicker(animName)
+	for _, child in ipairs(tabPickerScroll:GetChildren()) do
+		if child:IsA("TextButton") or child:IsA("TextLabel") or child:IsA("Frame") then child:Destroy() end
+	end
+	if #customTabs == 0 then
+		local noTabsLbl = Instance.new("TextLabel")
+		noTabsLbl.Size = UDim2.new(1, 0, 0, 28)
+		noTabsLbl.BackgroundTransparency = 1
+		noTabsLbl.Text = "No custom tabs yet."
+		noTabsLbl.TextSize = 10
+		noTabsLbl.TextColor3 = C.textSec
+		noTabsLbl.Font = Enum.Font.Gotham
+		noTabsLbl.ZIndex = 192
+		noTabsLbl.LayoutOrder = 1
+		noTabsLbl.Parent = tabPickerScroll
+	else
+		local order = 1
+		for _, tabName in ipairs(customTabs) do
+			local tabBtn = Instance.new("TextButton")
+			tabBtn.Size = UDim2.new(1, 0, 0, 26)
+			tabBtn.BackgroundColor3 = C.tabPickRow
+			tabBtn.Text = tabName
+			tabBtn.TextSize = 10
+			tabBtn.TextColor3 = C.textPri
+			tabBtn.Font = Enum.Font.GothamBold
+			tabBtn.TextXAlignment = Enum.TextXAlignment.Left
+			tabBtn.LayoutOrder = order
+			tabBtn.ZIndex = 192
+			tabBtn.BorderSizePixel = 0
+			tabBtn.Parent = tabPickerScroll
+			local tbc = Instance.new("UICorner")
+			tbc.CornerRadius = UDim.new(0, 4)
+			tbc.Parent = tabBtn
+			local tbpad = Instance.new("UIPadding")
+			tbpad.PaddingLeft = UDim.new(0, 8)
+			tbpad.Parent = tabBtn
+			order = order + 1
+
+			tabBtn.MouseButton1Click:Connect(function()
+				local key = getTabKey(tabName, "Default")
+				animPerTabOrder[key] = animPerTabOrder[key] or {}
+				local already = false
+				for _, n in ipairs(animPerTabOrder[key]) do
+					if n == animName then already = true break end
+				end
+				if not already then
+					table.insert(animPerTabOrder[key], animName)
+					saveTabAnimOrder()
+				end
+				tabPickerPanel.Visible = false
+				rebuildTabs()
+			end)
+
+			local subs = subTabs[tabName] or {}
+			for _, subName in ipairs(subs) do
+				local subBtn = Instance.new("TextButton")
+				subBtn.Size = UDim2.new(1, -12, 0, 22)
+				subBtn.BackgroundColor3 = C.tabPickSub
+				subBtn.Text = "  " .. tabName .. " / " .. subName
+				subBtn.TextSize = 9
+				subBtn.TextColor3 = C.textSec
+				subBtn.Font = Enum.Font.Gotham
+				subBtn.TextXAlignment = Enum.TextXAlignment.Left
+				subBtn.LayoutOrder = order
+				subBtn.ZIndex = 192
+				subBtn.BorderSizePixel = 0
+				subBtn.Parent = tabPickerScroll
+				local sbc = Instance.new("UICorner")
+				sbc.CornerRadius = UDim.new(0, 3)
+				sbc.Parent = subBtn
+				local sbpad = Instance.new("UIPadding")
+				sbpad.PaddingLeft = UDim.new(0, 16)
+				sbpad.Parent = subBtn
+				order = order + 1
+
+				subBtn.MouseButton1Click:Connect(function()
+					local key = getTabKey(tabName, subName)
+					animPerTabOrder[key] = animPerTabOrder[key] or {}
+					local already = false
+					for _, n in ipairs(animPerTabOrder[key]) do
+						if n == animName then already = true break end
+					end
+					if not already then
+						table.insert(animPerTabOrder[key], animName)
+						saveTabAnimOrder()
+					end
+					tabPickerPanel.Visible = false
+					rebuildTabs()
+				end)
+			end
+		end
+	end
+	centerPanel(tabPickerPanel)
+	tabPickerPanel.Visible = true
+end
+
+local confirmDeleteFrame = Instance.new("Frame")
+confirmDeleteFrame.Name = "ZoAnimConfirmDelete"
+confirmDeleteFrame.Size = UDim2.new(0, 210, 0, 110)
+confirmDeleteFrame.BackgroundColor3 = C.overlay
+confirmDeleteFrame.BorderSizePixel = 1
+confirmDeleteFrame.BorderColor3 = C.btnRed
+confirmDeleteFrame.Visible = false
+confirmDeleteFrame.ZIndex = 250
+confirmDeleteFrame.Parent = screenGui
+local cdfCorner = Instance.new("UICorner")
+cdfCorner.CornerRadius = UDim.new(0, 8)
+cdfCorner.Parent = confirmDeleteFrame
+
+local confirmLabel = Instance.new("TextLabel")
+confirmLabel.Size = UDim2.new(1, -20, 0, 55)
+confirmLabel.Position = UDim2.new(0, 10, 0, 8)
+confirmLabel.BackgroundTransparency = 1
+confirmLabel.Text = "Delete this animation?"
+confirmLabel.TextSize = 12
+confirmLabel.TextColor3 = C.textPri
+confirmLabel.TextWrapped = true
+confirmLabel.Font = Enum.Font.GothamBold
+confirmLabel.ZIndex = 251
+confirmLabel.Parent = confirmDeleteFrame
+
+local confirmYes = Instance.new("TextButton")
+confirmYes.Size = UDim2.new(0.45, -5, 0, 28)
+confirmYes.Position = UDim2.new(0, 8, 1, -36)
+confirmYes.BackgroundColor3 = C.btnRed
+confirmYes.Text = "Delete"
+confirmYes.TextSize = 11
+confirmYes.TextColor3 = C.textPri
+confirmYes.Font = Enum.Font.GothamBold
+confirmYes.ZIndex = 251
+confirmYes.BorderSizePixel = 0
+confirmYes.Parent = confirmDeleteFrame
+local cyCorner = Instance.new("UICorner")
+cyCorner.CornerRadius = UDim.new(0, 5)
+cyCorner.Parent = confirmYes
+
+local confirmNo = Instance.new("TextButton")
+confirmNo.Size = UDim2.new(0.45, -5, 0, 28)
+confirmNo.Position = UDim2.new(0.55, 0, 1, -36)
+confirmNo.BackgroundColor3 = C.btnGray
+confirmNo.Text = "Cancel"
+confirmNo.TextSize = 11
+confirmNo.TextColor3 = C.textPri
+confirmNo.Font = Enum.Font.GothamBold
+confirmNo.ZIndex = 251
+confirmNo.BorderSizePixel = 0
+confirmNo.Parent = confirmDeleteFrame
+local cnCorner = Instance.new("UICorner")
+cnCorner.CornerRadius = UDim.new(0, 5)
+cnCorner.Parent = confirmNo
+
+local ROW_H = 34
+local EXPAND_H = 226
+
+rebuildAnimList = function()
+	for _, child in ipairs(animScrollFrame:GetChildren()) do
+		if child:IsA("Frame") then child:Destroy() end
+	end
+	animationButtons = {}
+
+	local tab = guiState.activeTab
+	local sub = guiState.activeSubTab
+	local list = getAnimsForTab(tab, sub)
+	list = filterBySearch(list)
+	local bt = guiState.btnTransparency
+
+	for idx, name in ipairs(list) do
+		if not animationIds[name] then continue end
+		ensureAnimSetting(name)
+
+		local container = Instance.new("Frame")
+		container.Size = UDim2.new(1, 0, 0, ROW_H)
+		container.BackgroundColor3 = (idx % 2 == 0) and C.rowAlt or C.row
+		container.BackgroundTransparency = bt
+		container.BorderSizePixel = 0
+		container.LayoutOrder = idx
+		container.Name = "row_" .. name
+		container.ClipsDescendants = true
+		container.Parent = animScrollFrame
+
+		local cc = Instance.new("UICorner")
+		cc.CornerRadius = UDim.new(0, 5)
+		cc.Parent = container
+
+		local leftX = 4
+
+		if guiState.sortEnabled then
+			local sortUpBtn = Instance.new("TextButton")
+			sortUpBtn.Size = UDim2.new(0, 14, 0, 13)
+			sortUpBtn.Position = UDim2.new(0, leftX, 0, 3)
+			sortUpBtn.BackgroundColor3 = C.btnGray
+			sortUpBtn.BackgroundTransparency = bt
+			sortUpBtn.Text = "^"
+			sortUpBtn.TextSize = 8
+			sortUpBtn.TextColor3 = C.textSec
+			sortUpBtn.Font = Enum.Font.GothamBold
+			sortUpBtn.BorderSizePixel = 0
+			sortUpBtn.Parent = container
+			local subc = Instance.new("UICorner")
+			subc.CornerRadius = UDim.new(0, 3)
+			subc.Parent = sortUpBtn
+
+			local sortDownBtn = Instance.new("TextButton")
+			sortDownBtn.Size = UDim2.new(0, 14, 0, 13)
+			sortDownBtn.Position = UDim2.new(0, leftX, 1, -16)
+			sortDownBtn.BackgroundColor3 = C.btnGray
+			sortDownBtn.BackgroundTransparency = bt
+			sortDownBtn.Text = "v"
+			sortDownBtn.TextSize = 8
+			sortDownBtn.TextColor3 = C.textSec
+			sortDownBtn.Font = Enum.Font.GothamBold
+			sortDownBtn.BorderSizePixel = 0
+			sortDownBtn.Parent = container
+			local sdbc = Instance.new("UICorner")
+			sdbc.CornerRadius = UDim.new(0, 3)
+			sdbc.Parent = sortDownBtn
+
+			leftX = leftX + 18
+
+			local function getOrderList()
+				if tab == "All Anims" then return animOrder end
+				local key = getTabKey(tab, sub)
+				animPerTabOrder[key] = animPerTabOrder[key] or {}
+				return animPerTabOrder[key]
+			end
+
+			sortUpBtn.MouseButton1Click:Connect(function()
+				local ol = getOrderList()
+				for i, n in ipairs(ol) do
+					if n == name and i > 1 then
+						ol[i] = ol[i-1]; ol[i-1] = name; break
+					end
+				end
+				if tab == "All Anims" then saveAnimOrder() else saveTabAnimOrder() end
+				rebuildAnimList()
+			end)
+
+			sortDownBtn.MouseButton1Click:Connect(function()
+				local ol = getOrderList()
+				for i, n in ipairs(ol) do
+					if n == name and i < #ol then
+						ol[i] = ol[i+1]; ol[i+1] = name; break
+					end
+				end
+				if tab == "All Anims" then saveAnimOrder() else saveTabAnimOrder() end
+				rebuildAnimList()
+			end)
+		end
+
+		local favBtn = Instance.new("TextButton")
+		favBtn.Name = "favBtn"
+		favBtn.Size = UDim2.new(0, 18, 0, 18)
+		favBtn.Position = UDim2.new(0, leftX, 0.5, -9)
+		favBtn.BackgroundTransparency = 1
+		favBtn.Text = isFavourite(name) and "*" or "-"
+		favBtn.TextSize = 16
+		favBtn.TextColor3 = isFavourite(name) and C.star or C.starOff
+		favBtn.Font = Enum.Font.GothamBold
+		favBtn.BorderSizePixel = 0
+		favBtn.Parent = container
+
+		leftX = leftX + 20
+
+		local nameLabel = Instance.new("TextLabel")
+		nameLabel.Size = UDim2.new(1, -(leftX + 102), 1, 0)
+		nameLabel.Position = UDim2.new(0, leftX, 0, 0)
+		nameLabel.BackgroundTransparency = 1
+		nameLabel.Text = name
+		nameLabel.TextSize = 10
+		nameLabel.TextColor3 = C.textPri
+		nameLabel.Font = Enum.Font.Gotham
+		nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+		nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+		nameLabel.Parent = container
+
+		local expandBtn = Instance.new("TextButton")
+		expandBtn.Size = UDim2.new(0, 20, 0, 20)
+		expandBtn.Position = UDim2.new(1, -100, 0.5, -10)
+		expandBtn.BackgroundColor3 = C.btnGray
+		expandBtn.BackgroundTransparency = bt
+		expandBtn.Text = "..."
+		expandBtn.TextSize = 10
+		expandBtn.TextColor3 = C.textSec
+		expandBtn.Font = Enum.Font.GothamBold
+		expandBtn.BorderSizePixel = 0
+		expandBtn.Parent = container
+		local expc = Instance.new("UICorner")
+		expc.CornerRadius = UDim.new(0, 3)
+		expc.Parent = expandBtn
+
+		local playBtn = Instance.new("TextButton")
+		playBtn.Size = UDim2.new(0, 26, 0, 24)
+		playBtn.Position = UDim2.new(1, -76, 0.5, -12)
+		playBtn.BackgroundColor3 = C.btnGreen
+		playBtn.BackgroundTransparency = bt
+		playBtn.Text = ">"
+		playBtn.TextSize = 13
+		playBtn.TextColor3 = C.textPri
+		playBtn.Font = Enum.Font.GothamBold
+		playBtn.BorderSizePixel = 0
+		playBtn.Parent = container
+		local pbc = Instance.new("UICorner")
+		pbc.CornerRadius = UDim.new(0, 4)
+		pbc.Parent = playBtn
+
+		local pauseBtn = Instance.new("TextButton")
+		pauseBtn.Size = UDim2.new(0, 26, 0, 24)
+		pauseBtn.Position = UDim2.new(1, -48, 0.5, -12)
+		pauseBtn.BackgroundColor3 = C.btnOrange
+		pauseBtn.BackgroundTransparency = bt
+		pauseBtn.Text = "||"
+		pauseBtn.TextSize = 11
+		pauseBtn.TextColor3 = C.textPri
+		pauseBtn.Font = Enum.Font.GothamBold
+		pauseBtn.BorderSizePixel = 0
+		pauseBtn.Parent = container
+		local pausec = Instance.new("UICorner")
+		pausec.CornerRadius = UDim.new(0, 4)
+		pausec.Parent = pauseBtn
+
+		local stopBtn = Instance.new("TextButton")
+		stopBtn.Size = UDim2.new(0, 26, 0, 24)
+		stopBtn.Position = UDim2.new(1, -20, 0.5, -12)
+		stopBtn.BackgroundColor3 = C.btnRed
+		stopBtn.BackgroundTransparency = bt
+		stopBtn.Text = "[]"
+		stopBtn.TextSize = 10
+		stopBtn.TextColor3 = C.textPri
+		stopBtn.Font = Enum.Font.GothamBold
+		stopBtn.BorderSizePixel = 0
+		stopBtn.Parent = container
+		local stopc = Instance.new("UICorner")
+		stopc.CornerRadius = UDim.new(0, 4)
+		stopc.Parent = stopBtn
+
+		local expandPanel = Instance.new("Frame")
+		expandPanel.Size = UDim2.new(1, -8, 0, 0)
+		expandPanel.Position = UDim2.new(0, 4, 0, ROW_H + 2)
+		expandPanel.BackgroundColor3 = C.expand
+		expandPanel.BackgroundTransparency = bt
+		expandPanel.BorderSizePixel = 1
+		expandPanel.BorderColor3 = C.border
+		expandPanel.ClipsDescendants = true
+		expandPanel.ZIndex = 2
+		expandPanel.Parent = container
+
+		local epc = Instance.new("UICorner")
+		epc.CornerRadius = UDim.new(0, 5)
+		epc.Parent = expandPanel
+
+		local epLayout = Instance.new("UIListLayout")
+		epLayout.Parent = expandPanel
+		epLayout.Padding = UDim.new(0, 2)
+		epLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+		local epPad = Instance.new("UIPadding")
+		epPad.PaddingTop = UDim.new(0, 5)
+		epPad.PaddingLeft = UDim.new(0, 6)
+		epPad.PaddingRight = UDim.new(0, 6)
+		epPad.PaddingBottom = UDim.new(0, 5)
+		epPad.Parent = expandPanel
+
+		local function makeEpRow(lbl, val, ord)
+			local r = Instance.new("Frame")
+			r.Size = UDim2.new(1, 0, 0, 24)
+			r.BackgroundTransparency = 1
+			r.LayoutOrder = ord
+			r.ZIndex = 3
+			r.Parent = expandPanel
+			local l = Instance.new("TextLabel")
+			l.Size = UDim2.new(0.5, 0, 1, 0)
+			l.BackgroundTransparency = 1
+			l.Text = lbl
+			l.TextSize = 10
+			l.TextColor3 = C.textSec
+			l.Font = Enum.Font.Gotham
+			l.TextXAlignment = Enum.TextXAlignment.Left
+			l.ZIndex = 4
+			l.Parent = r
+			local b = Instance.new("TextBox")
+			b.Size = UDim2.new(0.48, 0, 0, 20)
+			b.Position = UDim2.new(0.52, 0, 0.5, -10)
+			b.BackgroundColor3 = C.input
+			b.BackgroundTransparency = bt
+			b.BorderSizePixel = 0
+			b.Text = tostring(val)
+			b.TextSize = 10
+			b.TextColor3 = C.textPri
+			b.Font = Enum.Font.Gotham
+			b.ClearTextOnFocus = false
+			b.ZIndex = 4
+			b.Parent = r
+			local bc = Instance.new("UICorner")
+			bc.CornerRadius = UDim.new(0, 3)
+			bc.Parent = b
+			return b
+		end
+
+		local function makeEpToggle(lbl, val, ord)
+			local r = Instance.new("Frame")
+			r.Size = UDim2.new(1, 0, 0, 24)
+			r.BackgroundTransparency = 1
+			r.LayoutOrder = ord
+			r.ZIndex = 3
+			r.Parent = expandPanel
+			local l = Instance.new("TextLabel")
+			l.Size = UDim2.new(0.5, 0, 1, 0)
+			l.BackgroundTransparency = 1
+			l.Text = lbl
+			l.TextSize = 10
+			l.TextColor3 = C.textSec
+			l.Font = Enum.Font.Gotham
+			l.TextXAlignment = Enum.TextXAlignment.Left
+			l.ZIndex = 4
+			l.Parent = r
+			local btn = Instance.new("TextButton")
+			btn.Size = UDim2.new(0.48, 0, 0, 20)
+			btn.Position = UDim2.new(0.52, 0, 0.5, -10)
+			btn.BackgroundColor3 = val and C.btnGreen or C.btnGray
+			btn.BackgroundTransparency = bt
+			btn.Text = val and "ON" or "OFF"
+			btn.TextSize = 10
+			btn.TextColor3 = C.textPri
+			btn.Font = Enum.Font.GothamBold
+			btn.ZIndex = 4
+			btn.BorderSizePixel = 0
+			btn.Parent = r
+			local bc = Instance.new("UICorner")
+			bc.CornerRadius = UDim.new(0, 3)
+			bc.Parent = btn
+			return btn
+		end
+
+		local s = animSettings[name]
+
+		local epRenameRow = Instance.new("Frame")
+		epRenameRow.Size = UDim2.new(1, 0, 0, 24)
+		epRenameRow.BackgroundTransparency = 1
+		epRenameRow.LayoutOrder = 0
+		epRenameRow.ZIndex = 3
+		epRenameRow.Parent = expandPanel
+
+		local epRenameBox = Instance.new("TextBox")
+		epRenameBox.Size = UDim2.new(0.57, -2, 0, 22)
+		epRenameBox.Position = UDim2.new(0, 0, 0, 1)
+		epRenameBox.BackgroundColor3 = C.input
+		epRenameBox.BackgroundTransparency = bt
+		epRenameBox.BorderSizePixel = 0
+		epRenameBox.PlaceholderText = "New name..."
+		epRenameBox.Text = ""
+		epRenameBox.TextSize = 9
+		epRenameBox.TextColor3 = C.textPri
+		epRenameBox.PlaceholderColor3 = C.textSec
+		epRenameBox.Font = Enum.Font.Gotham
+		epRenameBox.ClearTextOnFocus = false
+		epRenameBox.ZIndex = 4
+		epRenameBox.Parent = epRenameRow
+		local ernbc = Instance.new("UICorner")
+		ernbc.CornerRadius = UDim.new(0, 3)
+		ernbc.Parent = epRenameBox
+
+		local epRenameBtn = Instance.new("TextButton")
+		epRenameBtn.Size = UDim2.new(0.41, -2, 0, 22)
+		epRenameBtn.Position = UDim2.new(0.59, 2, 0, 1)
+		epRenameBtn.BackgroundColor3 = C.btnBlue
+		epRenameBtn.BackgroundTransparency = bt
+		epRenameBtn.Text = "Rename"
+		epRenameBtn.TextSize = 9
+		epRenameBtn.TextColor3 = C.textPri
+		epRenameBtn.Font = Enum.Font.GothamBold
+		epRenameBtn.ZIndex = 4
+		epRenameBtn.BorderSizePixel = 0
+		epRenameBtn.Parent = epRenameRow
+		local ernbtnc = Instance.new("UICorner")
+		ernbtnc.CornerRadius = UDim.new(0, 3)
+		ernbtnc.Parent = epRenameBtn
+
+		local epBlend     = makeEpRow("Blend Time", s.blendTime, 1)
+		local epFade      = makeEpRow("Fade Time",  s.fadeTime,  2)
+		local epSpeed     = makeEpRow("Speed",      s.speed,     3)
+		local epLoopBtn   = makeEpToggle("Loop",   s.loop,   4)
+		local epFreezeBtn = makeEpToggle("Freeze", s.freeze, 5)
+
+		local epSaveRow = Instance.new("Frame")
+		epSaveRow.Size = UDim2.new(1, 0, 0, 24)
+		epSaveRow.BackgroundTransparency = 1
+		epSaveRow.LayoutOrder = 6
+		epSaveRow.ZIndex = 3
+		epSaveRow.Parent = expandPanel
+
+		local epSaveBtn = Instance.new("TextButton")
+		epSaveBtn.Size = UDim2.new(1, 0, 0, 22)
+		epSaveBtn.Position = UDim2.new(0, 0, 0, 1)
+		epSaveBtn.BackgroundColor3 = Color3.fromRGB(30, 100, 40)
+		epSaveBtn.BackgroundTransparency = bt
+		epSaveBtn.Text = "Save Settings"
+		epSaveBtn.TextSize = 10
+		epSaveBtn.TextColor3 = C.textPri
+		epSaveBtn.Font = Enum.Font.GothamBold
+		epSaveBtn.ZIndex = 4
+		epSaveBtn.BorderSizePixel = 0
+		epSaveBtn.Parent = epSaveRow
+		local esbc = Instance.new("UICorner")
+		esbc.CornerRadius = UDim.new(0, 3)
+		esbc.Parent = epSaveBtn
+
+		local epAddTabRow = Instance.new("Frame")
+		epAddTabRow.Size = UDim2.new(1, 0, 0, 24)
+		epAddTabRow.BackgroundTransparency = 1
+		epAddTabRow.LayoutOrder = 7
+		epAddTabRow.ZIndex = 3
+		epAddTabRow.Parent = expandPanel
+
+		local epAddTabBtn = Instance.new("TextButton")
+		epAddTabBtn.Size = UDim2.new(1, 0, 0, 22)
+		epAddTabBtn.Position = UDim2.new(0, 0, 0, 1)
+		epAddTabBtn.BackgroundColor3 = C.btnPurple
+		epAddTabBtn.BackgroundTransparency = bt
+		epAddTabBtn.Text = "Add to Tab..."
+		epAddTabBtn.TextSize = 10
+		epAddTabBtn.TextColor3 = C.textPri
+		epAddTabBtn.Font = Enum.Font.GothamBold
+		epAddTabBtn.ZIndex = 4
+		epAddTabBtn.BorderSizePixel = 0
+		epAddTabBtn.Parent = epAddTabRow
+		local eatbc = Instance.new("UICorner")
+		eatbc.CornerRadius = UDim.new(0, 3)
+		eatbc.Parent = epAddTabBtn
+
+		local epDelRow = Instance.new("Frame")
+		epDelRow.Size = UDim2.new(1, 0, 0, 24)
+		epDelRow.BackgroundTransparency = 1
+		epDelRow.LayoutOrder = 8
+		epDelRow.ZIndex = 3
+		epDelRow.Parent = expandPanel
+
+		local epDelBtn = Instance.new("TextButton")
+		epDelBtn.Size = UDim2.new(1, 0, 0, 22)
+		epDelBtn.Position = UDim2.new(0, 0, 0, 1)
+		epDelBtn.BackgroundColor3 = C.btnRed
+		epDelBtn.BackgroundTransparency = bt
+		epDelBtn.Text = "Delete Animation"
+		epDelBtn.TextSize = 10
+		epDelBtn.TextColor3 = C.textPri
+		epDelBtn.Font = Enum.Font.GothamBold
+		epDelBtn.ZIndex = 4
+		epDelBtn.BorderSizePixel = 0
+		epDelBtn.Parent = epDelRow
+		local edbc = Instance.new("UICorner")
+		edbc.CornerRadius = UDim.new(0, 3)
+		edbc.Parent = epDelBtn
+
+		local expandedOpen = false
+
+		expandBtn.MouseButton1Click:Connect(function()
+			expandedOpen = not expandedOpen
+			if expandedOpen then
+				container.Size = UDim2.new(1, 0, 0, ROW_H + 4 + EXPAND_H)
+				expandPanel.Size = UDim2.new(1, -8, 0, EXPAND_H)
+				expandBtn.Text = "x"
+				expandBtn.TextColor3 = C.textPri
+			else
+				container.Size = UDim2.new(1, 0, 0, ROW_H)
+				expandPanel.Size = UDim2.new(1, -8, 0, 0)
+				expandBtn.Text = "..."
+				expandBtn.TextColor3 = C.textSec
+			end
+		end)
+
+		epRenameBtn.MouseButton1Click:Connect(function()
+			local newName = epRenameBox.Text
+			if newName == "" or newName == name then return end
+			if animationIds[newName] then return end
+			local oldName = name
+			local id = animationIds[oldName]
+			animationIds[newName] = id
+			animationIds[oldName] = nil
+			for i, n in ipairs(animOrder) do
+				if n == oldName then animOrder[i] = newName break end
+			end
+			for _, orderList in pairs(animPerTabOrder) do
+				for i, n in ipairs(orderList) do
+					if n == oldName then orderList[i] = newName break end
+				end
+			end
+			for i, n in ipairs(favourites) do
+				if n == oldName then favourites[i] = newName break end
+			end
+			if animSettings[oldName] then
+				animSettings[newName] = animSettings[oldName]
+				animSettings[oldName] = nil
+			end
+			if animations[oldName] then
+				animations[newName] = animations[oldName]
+				animations[oldName] = nil
+			end
+			saveAnimations()
+			saveAnimOrder()
+			saveTabAnimOrder()
+			saveAnimSettings()
+			saveFavourites()
+			rebuildAnimList()
+		end)
+
+		epLoopBtn.MouseButton1Click:Connect(function()
+			animSettings[name].loop = not animSettings[name].loop
+			epLoopBtn.Text = animSettings[name].loop and "ON" or "OFF"
+			epLoopBtn.BackgroundColor3 = animSettings[name].loop and C.btnGreen or C.btnGray
+		end)
+
+		epFreezeBtn.MouseButton1Click:Connect(function()
+			animSettings[name].freeze = not animSettings[name].freeze
+			epFreezeBtn.Text = animSettings[name].freeze and "ON" or "OFF"
+			epFreezeBtn.BackgroundColor3 = animSettings[name].freeze and C.btnGreen or C.btnGray
+		end)
+
+		epSaveBtn.MouseButton1Click:Connect(function()
+			local bt2 = tonumber(epBlend.Text)
+			local ft2 = tonumber(epFade.Text)
+			local sp2 = tonumber(epSpeed.Text)
+			if bt2 then animSettings[name].blendTime = bt2 end
+			if ft2 then animSettings[name].fadeTime   = ft2 end
+			if sp2 then animSettings[name].speed      = sp2 end
+			saveAnimSettings()
+		end)
+
+		epAddTabBtn.MouseButton1Click:Connect(function()
+			openTabPicker(name)
+		end)
+
+		epDelBtn.MouseButton1Click:Connect(function()
+			currentDeleteTarget = name
+			confirmLabel.Text = "Delete '" .. name .. "'?"
+			centerPanel(confirmDeleteFrame)
+			confirmDeleteFrame.Visible = true
+		end)
+
+		favBtn.MouseButton1Click:Connect(function()
+			if isFavourite(name) then
+				removeFavourite(name)
+				favBtn.Text = "-"
+				favBtn.TextColor3 = C.starOff
+			else
+				addFavourite(name)
+				favBtn.Text = "*"
+				favBtn.TextColor3 = C.star
+			end
+		end)
+
+		playBtn.MouseButton1Click:Connect(function()
+			if not currentAnimator then return end
+			local anim = animations[name]
+			if not anim then return end
+			local as = animSettings[name]
+			local useLoop   = as.loop   or guiState.globalLoop
+			local useFreeze = as.freeze or guiState.globalFreeze
+			local useBlend  = as.blendTime
+			local useFade   = as.fadeTime
+			local useSpeed  = as.speed
+			if guiState.forceAnimations then
+				local playing = currentAnimator:GetPlayingAnimationTracks()
+				for _, t in pairs(playing) do
+					if t.Priority ~= Enum.AnimationPriority.Core then
+						t:Stop(useFade)
+					end
+				end
+				anim.Priority = Enum.AnimationPriority.Action
+			end
+			anim.Looped = useLoop
+			anim:Play(useBlend, 1, useSpeed)
+			anim:AdjustSpeed(useSpeed)
+			if useFreeze then
+				task.delay(0.05, function()
+					if anim.IsPlaying then anim:AdjustSpeed(0) end
+				end)
+			end
+			pausedAnimations[name] = false
+			pauseBtn.Text = "||"
+			pauseBtn.BackgroundColor3 = C.btnOrange
+		end)
+
+		pauseBtn.MouseButton1Click:Connect(function()
+			local anim = animations[name]
+			if not anim then return end
+			if not anim.IsPlaying and not pausedAnimations[name] then return end
+			if pausedAnimations[name] then
+				local as = animSettings[name]
+				anim:AdjustSpeed(as.speed)
+				pausedAnimations[name] = false
+				pauseBtn.Text = "||"
+				pauseBtn.BackgroundColor3 = C.btnOrange
+			else
+				anim:AdjustSpeed(0)
+				pausedAnimations[name] = true
+				pauseBtn.Text = ">"
+				pauseBtn.BackgroundColor3 = C.btnGreen
+			end
+		end)
+
+		stopBtn.MouseButton1Click:Connect(function()
+			local anim = animations[name]
+			if not anim then return end
+			local as = animSettings[name]
+			anim:Stop(as.fadeTime)
+			pausedAnimations[name] = false
+			pauseBtn.Text = "||"
+			pauseBtn.BackgroundColor3 = C.btnOrange
+		end)
+
+		animationButtons[name] = {
+			play = playBtn, pause = pauseBtn, stop = stopBtn, container = container,
+		}
+	end
+end
+
+rebuildTabs = function()
+	for _, child in ipairs(tabsRow:GetChildren()) do
+		if child:IsA("TextButton") or child:IsA("Frame") then child:Destroy() end
+	end
+	for _, child in ipairs(subTabsRow:GetChildren()) do
+		if child:IsA("TextButton") or child:IsA("Frame") then child:Destroy() end
+	end
+
+	local allTabs = {"All Anims", "Favourites"}
+	for _, t in ipairs(customTabs) do table.insert(allTabs, t) end
+	local bt = guiState.btnTransparency
+
+	for i, tabName in ipairs(allTabs) do
+		local isActive = guiState.activeTab == tabName
+		local isCustom = tabName ~= "All Anims" and tabName ~= "Favourites"
+
+		local tabContainer = Instance.new("Frame")
+		tabContainer.Size = UDim2.new(0, math.max(58, #tabName * 7 + (isCustom and 28 or 14)), 0, 22)
+		tabContainer.BackgroundTransparency = 1
+		tabContainer.LayoutOrder = i
+		tabContainer.Parent = tabsRow
+
+		local tabContainerLayout = Instance.new("UIListLayout")
+		tabContainerLayout.FillDirection = Enum.FillDirection.Horizontal
+		tabContainerLayout.Padding = UDim.new(0, 0)
+		tabContainerLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		tabContainerLayout.Parent = tabContainer
+
+		local btn = Instance.new("TextButton")
+		btn.Size = UDim2.new(0, math.max(48, #tabName * 7 + 10), 0, 22)
+		btn.BackgroundColor3 = isActive and C.tabActive or C.btnGray
+		btn.BackgroundTransparency = bt
+		btn.Text = tabName
+		btn.TextSize = 10
+		btn.TextColor3 = C.textPri
+		btn.Font = Enum.Font.GothamBold
+		btn.LayoutOrder = 1
+		btn.BorderSizePixel = 0
+		btn.Parent = tabContainer
+		local bc = Instance.new("UICorner")
+		bc.CornerRadius = UDim.new(0, 4)
+		bc.Parent = btn
+
+		btn.MouseButton1Click:Connect(function()
+			guiState.activeTab = tabName
+			guiState.activeSubTab = "Default"
+			rebuildTabs()
+			rebuildAnimList()
+		end)
+
+		if isCustom then
+			local delTabBtn = Instance.new("TextButton")
+			delTabBtn.Size = UDim2.new(0, 16, 0, 22)
+			delTabBtn.BackgroundColor3 = Color3.fromRGB(90, 20, 20)
+			delTabBtn.BackgroundTransparency = bt
+			delTabBtn.Text = "x"
+			delTabBtn.TextSize = 9
+			delTabBtn.TextColor3 = C.textPri
+			delTabBtn.Font = Enum.Font.GothamBold
+			delTabBtn.LayoutOrder = 2
+			delTabBtn.BorderSizePixel = 0
+			delTabBtn.Parent = tabContainer
+			local dtbc = Instance.new("UICorner")
+			dtbc.CornerRadius = UDim.new(0, 4)
+			dtbc.Parent = delTabBtn
+
+			delTabBtn.MouseButton1Click:Connect(function()
+				for i2, t in ipairs(customTabs) do
+					if t == tabName then table.remove(customTabs, i2) break end
+				end
+				subTabs[tabName] = nil
+				for key in pairs(animPerTabOrder) do
+					if key:sub(1, #tabName + 2) == tabName .. "::" then
+						animPerTabOrder[key] = nil
+					end
+				end
+				saveCustomTabs()
+				saveTabAnimOrder()
+				if guiState.activeTab == tabName then
+					guiState.activeTab = "All Anims"
+					guiState.activeSubTab = "Default"
+				end
+				rebuildTabs()
+				rebuildAnimList()
+			end)
+		end
+	end
+
+	local activeTab = guiState.activeTab
+	local subs = subTabs[activeTab]
+	local isCustomTab = activeTab ~= "All Anims" and activeTab ~= "Favourites"
+
+	if isCustomTab then
+		subTabsRow.Visible = true
+
+		local addSubBtn = Instance.new("TextButton")
+		addSubBtn.Size = UDim2.new(0, 20, 0, 18)
+		addSubBtn.BackgroundColor3 = C.btnGray
+		addSubBtn.BackgroundTransparency = bt
+		addSubBtn.Text = "+"
+		addSubBtn.TextSize = 12
+		addSubBtn.TextColor3 = C.textPri
+		addSubBtn.Font = Enum.Font.GothamBold
+		addSubBtn.LayoutOrder = 0
+		addSubBtn.BorderSizePixel = 0
+		addSubBtn.Parent = subTabsRow
+		local astbc = Instance.new("UICorner")
+		astbc.CornerRadius = UDim.new(0, 3)
+		astbc.Parent = addSubBtn
+
+		addSubBtn.MouseButton1Click:Connect(function()
+			newSubTabPanel.Size = UDim2.new(0, 220, 0, 82)
+			centerPanel(newSubTabPanel)
+			newSubTabPanel.Visible = true
+		end)
+
+		local allSubs = {"Default"}
+		if subs then
+			for _, s in ipairs(subs) do table.insert(allSubs, s) end
+		end
+
+		for j, subName in ipairs(allSubs) do
+			local isActiveSub = guiState.activeSubTab == subName
+			local isDefaultSub = subName == "Default"
+
+			local subContainer = Instance.new("Frame")
+			subContainer.Size = UDim2.new(0, math.max(46, #subName * 7 + (isDefaultSub and 10 or 24)), 0, 18)
+			subContainer.BackgroundTransparency = 1
+			subContainer.LayoutOrder = j
+			subContainer.Parent = subTabsRow
+
+			local subContainerLayout = Instance.new("UIListLayout")
+			subContainerLayout.FillDirection = Enum.FillDirection.Horizontal
+			subContainerLayout.Padding = UDim.new(0, 0)
+			subContainerLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			subContainerLayout.Parent = subContainer
+
+			local sbtn = Instance.new("TextButton")
+			sbtn.Size = UDim2.new(0, math.max(38, #subName * 7 + 8), 0, 18)
+			sbtn.BackgroundColor3 = isActiveSub and C.subActive or C.btnGray
+			sbtn.BackgroundTransparency = bt
+			sbtn.Text = subName
+			sbtn.TextSize = 9
+			sbtn.TextColor3 = C.textPri
+			sbtn.Font = Enum.Font.GothamBold
+			sbtn.LayoutOrder = 1
+			sbtn.BorderSizePixel = 0
+			sbtn.Parent = subContainer
+			local sbc = Instance.new("UICorner")
+			sbc.CornerRadius = UDim.new(0, 3)
+			sbc.Parent = sbtn
+
+			sbtn.MouseButton1Click:Connect(function()
+				guiState.activeSubTab = subName
+				rebuildTabs()
+				rebuildAnimList()
+			end)
+
+			if not isDefaultSub then
+				local delSubBtn = Instance.new("TextButton")
+				delSubBtn.Size = UDim2.new(0, 14, 0, 18)
+				delSubBtn.BackgroundColor3 = Color3.fromRGB(90, 20, 20)
+				delSubBtn.BackgroundTransparency = bt
+				delSubBtn.Text = "x"
+				delSubBtn.TextSize = 8
+				delSubBtn.TextColor3 = C.textPri
+				delSubBtn.Font = Enum.Font.GothamBold
+				delSubBtn.LayoutOrder = 2
+				delSubBtn.BorderSizePixel = 0
+				delSubBtn.Parent = subContainer
+				local dsbc = Instance.new("UICorner")
+				dsbc.CornerRadius = UDim.new(0, 3)
+				dsbc.Parent = delSubBtn
+
+				delSubBtn.MouseButton1Click:Connect(function()
+					local st = subTabs[activeTab]
+					if st then
+						for i2, s in ipairs(st) do
+							if s == subName then table.remove(st, i2) break end
+						end
+					end
+					local key = getTabKey(activeTab, subName)
+					animPerTabOrder[key] = nil
+					saveCustomTabs()
+					saveTabAnimOrder()
+					if guiState.activeSubTab == subName then
+						guiState.activeSubTab = "Default"
+					end
+					rebuildTabs()
+					rebuildAnimList()
+				end)
+			end
+		end
+
+		contentArea.Position = UDim2.new(0, 0, 0, 82)
+		contentArea.Size = UDim2.new(1, 0, 0, guiState.guiHeight - 82)
+	else
+		subTabsRow.Visible = false
+		contentArea.Position = UDim2.new(0, 0, 0, 58)
+		contentArea.Size = UDim2.new(1, 0, 0, guiState.guiHeight - 58)
+	end
+end
+
+searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+	searchQuery = searchBox.Text
+	rebuildAnimList()
+end)
+
+dropLoop.MouseButton1Click:Connect(function()
+	guiState.globalLoop = not guiState.globalLoop
+	updateDropLabels()
+	saveGuiState()
+end)
+
+dropFreeze.MouseButton1Click:Connect(function()
+	guiState.globalFreeze = not guiState.globalFreeze
+	updateDropLabels()
+	saveGuiState()
+end)
+
+dropSort.MouseButton1Click:Connect(function()
+	guiState.sortEnabled = not guiState.sortEnabled
+	updateDropLabels()
+	closeDropdown()
+	rebuildAnimList()
+end)
+
+dropForce.MouseButton1Click:Connect(function()
+	guiState.forceAnimations = not guiState.forceAnimations
+	updateDropLabels()
+	saveGuiState()
+end)
+
+dropNewTab.MouseButton1Click:Connect(function()
+	closeDropdown()
+	newTabPanel.Size = UDim2.new(0, 220, 0, 82)
+	centerPanel(newTabPanel)
+	newTabPanel.Visible = true
+end)
+
+newTabCancel.MouseButton1Click:Connect(function()
+	newTabPanel.Visible = false
+	newTabBox.Text = ""
+end)
+
+newTabConfirm.MouseButton1Click:Connect(function()
+	local tabName = newTabBox.Text
+	if tabName == "" or tabName == "All Anims" or tabName == "Favourites" then return end
+	local found = false
+	for _, t in ipairs(customTabs) do
+		if t == tabName then found = true break end
+	end
+	if not found then
+		table.insert(customTabs, tabName)
+		subTabs[tabName] = {}
+		saveCustomTabs()
+		rebuildTabs()
+		rebuildAnimList()
+	end
+	newTabBox.Text = ""
+	newTabPanel.Visible = false
+end)
+
+newSubTabCancel.MouseButton1Click:Connect(function()
+	newSubTabPanel.Visible = false
+	newSubTabBox.Text = ""
+end)
+
+newSubTabConfirm.MouseButton1Click:Connect(function()
+	local subName = newSubTabBox.Text
+	if subName == "" or subName == "Default" then return end
+	local activeTab = guiState.activeTab
+	if activeTab == "All Anims" or activeTab == "Favourites" then return end
+	subTabs[activeTab] = subTabs[activeTab] or {}
+	local found = false
+	for _, s in ipairs(subTabs[activeTab]) do
+		if s == subName then found = true break end
+	end
+	if not found then
+		table.insert(subTabs[activeTab], subName)
+		saveCustomTabs()
+		rebuildTabs()
+		rebuildAnimList()
+	end
+	newSubTabBox.Text = ""
+	newSubTabPanel.Visible = false
+end)
+
+confirmNo.MouseButton1Click:Connect(function()
+	confirmDeleteFrame.Visible = false
+	currentDeleteTarget = nil
+end)
+
+confirmYes.MouseButton1Click:Connect(function()
+	if not currentDeleteTarget then return end
+	local name = currentDeleteTarget
+	if animations[name] then
+		pcall(function() animations[name]:Stop() end)
+		animations[name] = nil
+	end
+	animationIds[name] = nil
+	for i, n in ipairs(animOrder) do
+		if n == name then table.remove(animOrder, i) break end
+	end
+	for _, orderList in pairs(animPerTabOrder) do
+		for i, n in ipairs(orderList) do
+			if n == name then table.remove(orderList, i) break end
+		end
+	end
+	removeFavourite(name)
+	animSettings[name] = nil
+	saveAnimations()
+	saveAnimOrder()
+	saveTabAnimOrder()
+	saveAnimSettings()
+	saveFavourites()
+	confirmDeleteFrame.Visible = false
+	currentDeleteTarget = nil
+	rebuildAnimList()
+end)
+
+addAnimBtn.MouseButton1Click:Connect(function()
+	local animName = addAnimNameBox.Text
+	local animId   = addAnimIdBox.Text
+	if animName == "" or animId == "" then return end
+	if not animId:match("rbxassetid://") then
+		animId = "rbxassetid://" .. animId
+	end
+	if animationIds[animName] then return end
+	animationIds[animName] = animId
+	table.insert(animOrder, animName)
+	ensureAnimSetting(animName)
+	local activeTab = guiState.activeTab
+	if activeTab ~= "All Anims" and activeTab ~= "Favourites" then
+		local key = getTabKey(activeTab, guiState.activeSubTab)
+		animPerTabOrder[key] = animPerTabOrder[key] or {}
+		table.insert(animPerTabOrder[key], animName)
+		saveTabAnimOrder()
+	end
+	saveAnimations()
+	saveAnimOrder()
+	saveAnimSettings()
+	if currentAnimator then
+		local anim = Instance.new("Animation")
+		anim.AnimationId = animId
+		local ok, loaded = pcall(function() return currentAnimator:LoadAnimation(anim) end)
+		if ok and loaded then animations[animName] = loaded end
+	end
+	addAnimNameBox.Text = ""
+	addAnimIdBox.Text   = ""
+	rebuildAnimList()
+end)
+
+local function loadAnimsForCharacter(character)
+	local humanoid = character:WaitForChild("Humanoid", 10)
+	if not humanoid then return end
+	local animator = humanoid:FindFirstChildOfClass("Animator") or humanoid:WaitForChild("Animator", 10)
+	if not animator then return end
+	currentAnimator = animator
+	for _, anim in pairs(animations) do
+		pcall(function() anim:Stop() end)
+	end
+	animations = {}
+	pausedAnimations = {}
+	for name, id in pairs(animationIds) do
+		local anim = Instance.new("Animation")
+		anim.AnimationId = id
+		local ok, loaded = pcall(function() return animator:LoadAnimation(anim) end)
+		if ok and loaded then animations[name] = loaded end
+	end
+end
+
+player.CharacterAdded:Connect(function(character)
+	loadAnimsForCharacter(character)
+end)
+
+if player.Character then
+	loadAnimsForCharacter(player.Character)
+end
+
+rebuildTabs()
+rebuildAnimList()
+
+print("ZoAnim ready.")
